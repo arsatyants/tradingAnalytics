@@ -226,7 +226,7 @@ This project is licensed under the terms specified in the LICENSE file.
 
 ## 👤 Author
 
-**Arsa Tyants** ([@arsatyants](https://github.com/arsatyants))
+**Andrey Arsatyants** ([@arsatyants](https://github.com/arsatyants))
 
 ## 🙏 Acknowledgments
 
