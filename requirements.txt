@@ -1,38 +1,77 @@
 # Trading Analytics Dependencies
-# Core cryptocurrency data and analysis libraries
-ccxt>=4.0.0
-pandas>=2.0.0
-numpy>=1.24.0
+# =============================================================================
 
-# Deep Learning (PyTorch with CUDA support)
-torch>=2.0.0
+# CORE REQUIREMENTS (minimal setup)
+# ---------------------------------
+numpy>=1.24.0                # Required for all scripts
+pandas>=2.0.0                # Required for notebooks
+
+# CRYPTOCURRENCY DATA (optional for CPU script with --demo)
+# ---------------------------------------------------------
+ccxt>=4.0.0                  # Binance API - causes bus errors on Pi Zero
+                             # Use --demo flag to bypass on Pi Zero
+
+# DEEP LEARNING (for notebooks only)
+# -----------------------------------
+torch>=2.0.0                 # PyTorch with CUDA support
 torchvision>=0.15.0
 torchaudio>=2.0.0
-
-# Machine Learning utilities
 scikit-learn>=1.3.0
 
-# Visualization
-matplotlib>=3.7.0
-seaborn>=0.12.0
-mplfinance>=0.12.0
+# VISUALIZATION (optional with --no-plots)
+# -----------------------------------------
+matplotlib>=3.7.0            # Plotting - may have issues on Pi Zero
+seaborn>=0.12.0              # Statistical visualization
+mplfinance>=0.12.0           # Financial charts
 
-# Technical Analysis
-ta>=0.11.0
+# TECHNICAL ANALYSIS (for notebooks)
+# -----------------------------------
+ta>=0.11.0                   # Technical indicators
 
-# Signal Processing
-pywavelets>=1.4.0
-scipy>=1.11.0
-statsmodels>=0.14.0
-ssqueezepy>=0.6.0
+# SIGNAL PROCESSING (for notebooks)
+# ----------------------------------
+pywavelets>=1.4.0            # Wavelet transforms
+scipy>=1.11.0                # Scientific computing
+statsmodels>=0.14.0          # Statistical models
+ssqueezepy>=0.6.0            # Synchrosqueezing transforms
 
-# Jupyter Environment
+# JUPYTER ENVIRONMENT (for notebooks)
+# ------------------------------------
 jupyterlab>=4.0.0
 ipython>=8.0.0
 
-# ONNX (model export)
+# MODEL EXPORT (for notebooks)
+# -----------------------------
 onnx>=1.14.0
 onnxscript>=0.1.0
 
-# GPU Acceleration (optional - for GPU wavelet scripts)
-pyopencl>=2023.1.0
+# GPU ACCELERATION (optional - for GPU wavelet scripts)
+# ------------------------------------------------------
+pyopencl>=2023.1.0           # OpenCL (multi-platform GPU)
+                             # For OpenGL: PyOpenGL, glfw (see below)
+
+# OPENGL SUPPORT (Raspberry Pi 5 only)
+# -------------------------------------
+# PyOpenGL>=3.1.7            # Uncomment for OpenGL compute shaders
+# glfw>=2.6.0                # Uncomment for GLFW window context
+
+# =============================================================================
+# INSTALLATION NOTES
+# =============================================================================
+#
+# Full installation (all features):
+#   pip install -r requirements.txt
+#
+# Minimal installation (CPU script with demo data):
+#   pip install numpy
+#
+# Raspberry Pi Zero (safe mode):
+#   pip install numpy
+#   python gpu_wavelet_cpu_plot.py --demo --no-plots
+#
+# GPU Scripts:
+#   - CUDA:   Requires PyTorch with CUDA (torch>=2.0.0)
+#   - OpenCL: pip install pyopencl
+#   - OpenGL: pip install PyOpenGL glfw (Raspberry Pi 5)
+#
+# =============================================================================
