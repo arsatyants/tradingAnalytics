@@ -197,46 +197,46 @@ try:
     ax1 = fig.add_subplot(gs[0])
     ax1.plot(dates, prices, 'b-', linewidth=1, alpha=0.7, label='Original Price')
     ax1.set_title('BTC/USDT Price History (5-min candles)', fontsize=14, fontweight='bold')
-ax1.set_ylabel('Price (USD)', fontsize=11)
-ax1.grid(True, alpha=0.3)
-ax1.legend(loc='upper left')
-ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    ax1.set_ylabel('Price (USD)', fontsize=11)
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(loc='upper left')
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-# Subplot 2: Price with Trend
-ax2 = fig.add_subplot(gs[1])
-ax2.plot(dates, prices, 'b-', linewidth=1, alpha=0.4, label='Original Price')
-ax2.plot(aligned_dates, trend_gpu, 'r-', linewidth=2, label='Trend (Low-pass)')
-ax2.set_title('Price Decomposition: Original vs Trend', fontsize=14, fontweight='bold')
-ax2.set_ylabel('Price (USD)', fontsize=11)
-ax2.grid(True, alpha=0.3)
-ax2.legend(loc='upper left')
-ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    # Subplot 2: Price with Trend
+    ax2 = fig.add_subplot(gs[1])
+    ax2.plot(dates, prices, 'b-', linewidth=1, alpha=0.4, label='Original Price')
+    ax2.plot(aligned_dates, trend_gpu, 'r-', linewidth=2, label='Trend (Low-pass)')
+    ax2.set_title('Price Decomposition: Original vs Trend', fontsize=14, fontweight='bold')
+    ax2.set_ylabel('Price (USD)', fontsize=11)
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(loc='upper left')
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-# Subplot 3: Detail coefficients
-ax3 = fig.add_subplot(gs[2])
-ax3.plot(aligned_dates, detail_gpu, 'g-', linewidth=1, alpha=0.7, label='Detail (High-pass)')
-ax3.axhline(y=0, color='k', linestyle='--', linewidth=0.5, alpha=0.5)
-ax3.axhline(y=anomaly_threshold, color='r', linestyle='--', linewidth=1, label=f'Anomaly Threshold (${anomaly_threshold:.0f})')
-ax3.axhline(y=-anomaly_threshold, color='r', linestyle='--', linewidth=1)
-if len(anomaly_indices) > 0:
-    anomaly_dates = [aligned_dates[i] for i in anomaly_indices if i < len(aligned_dates)]
-    anomaly_values = detail_gpu[anomaly_indices[:len(anomaly_dates)]]
-    ax3.scatter(anomaly_dates, anomaly_values, color='red', s=50, marker='*', 
-               zorder=5, label=f'Anomalies ({len(anomaly_indices)})')
-ax3.set_title('Detail Coefficients (High-Frequency Changes)', fontsize=14, fontweight='bold')
-ax3.set_ylabel('Detail Coefficient (USD)', fontsize=11)
-ax3.grid(True, alpha=0.3)
-ax3.legend(loc='upper left')
-ax3.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    # Subplot 3: Detail coefficients
+    ax3 = fig.add_subplot(gs[2])
+    ax3.plot(aligned_dates, detail_gpu, 'g-', linewidth=1, alpha=0.7, label='Detail (High-pass)')
+    ax3.axhline(y=0, color='k', linestyle='--', linewidth=0.5, alpha=0.5)
+    ax3.axhline(y=anomaly_threshold, color='r', linestyle='--', linewidth=1, label=f'Anomaly Threshold (${anomaly_threshold:.0f})')
+    ax3.axhline(y=-anomaly_threshold, color='r', linestyle='--', linewidth=1)
+    if len(anomaly_indices) > 0:
+        anomaly_dates = [aligned_dates[i] for i in anomaly_indices if i < len(aligned_dates)]
+        anomaly_values = detail_gpu[anomaly_indices[:len(anomaly_dates)]]
+        ax3.scatter(anomaly_dates, anomaly_values, color='red', s=50, marker='*', 
+                   zorder=5, label=f'Anomalies ({len(anomaly_indices)})')
+    ax3.set_title('Detail Coefficients (High-Frequency Changes)', fontsize=14, fontweight='bold')
+    ax3.set_ylabel('Detail Coefficient (USD)', fontsize=11)
+    ax3.grid(True, alpha=0.3)
+    ax3.legend(loc='upper left')
+    ax3.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-# Subplot 4: Volume
-ax4 = fig.add_subplot(gs[3])
-ax4.bar(dates, volumes, width=0.04, color='purple', alpha=0.6)
-ax4.set_title('Trading Volume', fontsize=14, fontweight='bold')
-ax4.set_ylabel('Volume (BTC)', fontsize=11)
-ax4.set_xlabel('Date', fontsize=11)
-ax4.grid(True, alpha=0.3)
-ax4.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    # Subplot 4: Volume
+    ax4 = fig.add_subplot(gs[3])
+    ax4.bar(dates, volumes, width=0.04, color='purple', alpha=0.6)
+    ax4.set_title('Trading Volume', fontsize=14, fontweight='bold')
+    ax4.set_ylabel('Volume (BTC)', fontsize=11)
+    ax4.set_xlabel('Date', fontsize=11)
+    ax4.grid(True, alpha=0.3)
+    ax4.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
     plt.tight_layout()
     plt.savefig(f'{output_dir}/01_main_overview.png', dpi=300, bbox_inches='tight')
