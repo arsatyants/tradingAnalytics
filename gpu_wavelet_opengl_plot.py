@@ -59,6 +59,35 @@ print("=" * 70)
 
 ctx_initialized = False
 use_gpu = False
+window = None
+
+def is_raspberry_pi_zero():
+    """Detect if running on Raspberry Pi Zero (VideoCore IV - no compute support)."""
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read().lower()
+            return 'zero' in model or 'pi 1' in model or 'pi 2' in model or 'pi 3' in model
+    except:
+        pass
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.read().lower()
+            # BCM2835 is VideoCore IV (Pi Zero, Pi 1)
+            # BCM2836/BCM2837 is also VideoCore IV (Pi 2, Pi 3)
+            if 'bcm2835' in cpuinfo or 'bcm2836' in cpuinfo or 'bcm2837' in cpuinfo:
+                return True
+    except:
+        pass
+    return False
+
+if OPENGL_AVAILABLE:
+    # Skip OpenGL entirely on Pi Zero/older models - they don't support compute shaders
+    # and attempting to create contexts can cause bus errors
+    if is_raspberry_pi_zero():
+        print(f"\n⚠ Raspberry Pi Zero/older model detected (VideoCore IV)")
+        print(f"  VideoCore IV only supports OpenGL ES 2.0 - no compute shaders")
+        print(f"  Using CPU fallback to avoid bus errors")
+        OPENGL_AVAILABLE = False
 
 if OPENGL_AVAILABLE:
     try:
@@ -709,6 +738,8 @@ if OPENGL_AVAILABLE and ctx_initialized:
                 glFinish()  # Wait for all GL commands to complete
             except:
                 pass
+        if window:
+            glfw.destroy_window(window)
         glfw.terminate()
     except Exception as e:
         # Silently handle cleanup errors to avoid bus errors on exit
