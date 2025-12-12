@@ -19,36 +19,59 @@ Features:
 import numpy as np
 import time
 import os
+import sys
 from datetime import datetime, timedelta
 
-# Set matplotlib backend before any other matplotlib imports
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend, safer for headless systems
+# Lazy import matplotlib only when needed
+MATPLOTLIB_AVAILABLE = False
+plt = None
+mdates = None
+GridSpec = None
+
+def init_matplotlib():
+    """Initialize matplotlib with proper error handling for low-end systems"""
+    global MATPLOTLIB_AVAILABLE, plt, mdates, GridSpec
+    
+    if MATPLOTLIB_AVAILABLE:
+        return True
+    
+    try:
+        # Set backend before import
+        import matplotlib
+        matplotlib.use('Agg')  # Non-interactive backend
+        
+        import matplotlib.pyplot as plt_module
+        import matplotlib.dates as mdates_module
+        from matplotlib.gridspec import GridSpec as GridSpec_module
+        
+        plt = plt_module
+        mdates = mdates_module
+        GridSpec = GridSpec_module
+        MATPLOTLIB_AVAILABLE = True
+        return True
+    except Exception as e:
+        print(f"⚠ Matplotlib initialization error: {e}")
+        print("  Run with --no-plots to skip visualization")
+        return False
 
 import ccxt
 
-try:
-    import matplotlib.pyplot as plt
-    import matplotlib.dates as mdates
-    from matplotlib.gridspec import GridSpec
-    MATPLOTLIB_AVAILABLE = True
-except Exception as e:
-    print(f"⚠ Matplotlib import error: {e}")
-    print("  Plots will not be generated")
-    MATPLOTLIB_AVAILABLE = False
+# Check for --no-plots flag
+SKIP_PLOTS = '--no-plots' in sys.argv
 
 # Create output directory
 output_dir = 'wavelet_plots_cpu'
-os.makedirs(output_dir, exist_ok=True)
+if not SKIP_PLOTS:
+    os.makedirs(output_dir, exist_ok=True)
 
 print("=" * 70)
 print("WAVELET DECOMPOSITION - CPU MODE (NumPy)")
 print("=" * 70)
 print(f"\n  Pure CPU implementation (no OpenGL/GPU dependencies)")
-if MATPLOTLIB_AVAILABLE:
-    print(f"  Output Directory: {output_dir}/")
+if SKIP_PLOTS:
+    print(f"  Mode: Computation only (--no-plots)")
 else:
-    print(f"  ⚠ Matplotlib unavailable - plots disabled")
+    print(f"  Output Directory: {output_dir}/")
 print()
 
 # =============================================================================
