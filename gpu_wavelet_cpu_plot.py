@@ -3,14 +3,16 @@ CPU-Only Wavelet Decomposition (No OpenGL Dependencies)
 ========================================================
 
 Pure NumPy implementation for Raspberry Pi Zero and systems without GPU support.
-No OpenGL/GLFW imports - guaranteed to work on any system with numpy.
+Lazy-loads matplotlib to avoid bus errors on low-end hardware.
 
 Usage:
-    python gpu_wavelet_cpu_plot.py
+    python gpu_wavelet_cpu_plot.py              # Full mode with plots
+    python gpu_wavelet_cpu_plot.py --no-plots   # Computation only (Pi Zero safe)
 
 Features:
 - Pure NumPy convolution (no GPU dependencies)
-- High-resolution plots (300 DPI)
+- Lazy matplotlib loading (safer for Pi Zero)
+- High-resolution plots (300 DPI) when available
 - Real BTC data from Binance
 - Works on Raspberry Pi Zero, Pi 1, 2, 3
 - Saves plots to 'wavelet_plots_cpu/' directory
