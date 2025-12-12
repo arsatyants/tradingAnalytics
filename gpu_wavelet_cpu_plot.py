@@ -187,17 +187,16 @@ print("=" * 70)
 print("\n[1/5] Main overview plot... ", end='', flush=True)
 
 try:
+    fig = plt.figure(figsize=(16, 12), dpi=300)
+    gs = GridSpec(4, 1, figure=fig, hspace=0.3)
 
-fig = plt.figure(figsize=(16, 12), dpi=300)
-gs = GridSpec(4, 1, figure=fig, hspace=0.3)
+    offset = len(prices) - len(trend_gpu)
+    aligned_dates = dates[offset:]
 
-offset = len(prices) - len(trend_gpu)
-aligned_dates = dates[offset:]
-
-# Subplot 1: Original prices
-ax1 = fig.add_subplot(gs[0])
-ax1.plot(dates, prices, 'b-', linewidth=1, alpha=0.7, label='Original Price')
-ax1.set_title('BTC/USDT Price History (5-min candles)', fontsize=14, fontweight='bold')
+    # Subplot 1: Original prices
+    ax1 = fig.add_subplot(gs[0])
+    ax1.plot(dates, prices, 'b-', linewidth=1, alpha=0.7, label='Original Price')
+    ax1.set_title('BTC/USDT Price History (5-min candles)', fontsize=14, fontweight='bold')
 ax1.set_ylabel('Price (USD)', fontsize=11)
 ax1.grid(True, alpha=0.3)
 ax1.legend(loc='upper left')
@@ -254,32 +253,31 @@ except Exception as e:
 print("[2/5] Progressive approximations... ", end='', flush=True)
 
 try:
+    fig = plt.figure(figsize=(20, 16), dpi=300)
+    gs = GridSpec(6, 1, figure=fig, hspace=0.35)
+    fig.suptitle('Progressive Approximations - CPU Mode', fontsize=18, fontweight='bold')
 
-fig = plt.figure(figsize=(20, 16), dpi=300)
-gs = GridSpec(6, 1, figure=fig, hspace=0.35)
-fig.suptitle('Progressive Approximations - CPU Mode', fontsize=18, fontweight='bold')
+    ax_orig = plt.subplot(gs[0])
+    ax_orig.plot(dates, prices, 'b-', linewidth=1.5, alpha=0.8, label='Original')
+    ax_orig.set_title('Original Signal: BTC/USDT', fontsize=12, fontweight='bold')
+    ax_orig.set_ylabel('Price (USD)', fontsize=10)
+    ax_orig.grid(True, alpha=0.3)
+    ax_orig.legend(loc='upper left')
+    ax_orig.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-ax_orig = plt.subplot(gs[0])
-ax_orig.plot(dates, prices, 'b-', linewidth=1.5, alpha=0.8, label='Original')
-ax_orig.set_title('Original Signal: BTC/USDT', fontsize=12, fontweight='bold')
-ax_orig.set_ylabel('Price (USD)', fontsize=10)
-ax_orig.grid(True, alpha=0.3)
-ax_orig.legend(loc='upper left')
-ax_orig.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    colors = ['purple', 'red', 'orange', 'green', 'blue']
+    labels = ['Level 0 (Trend)', 'Level 1', 'Level 2', 'Level 3', 'Level 4']
 
-colors = ['orangered', 'orange', 'gold', 'limegreen', 'dodgerblue']
-labels = ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5']
-
-for i in range(5):
-    ax = plt.subplot(gs[i+1])
-    offset_a = len(prices) - len(approximations[i])
-    dates_a = dates[offset_a:]
-    ax.plot(dates_a, approximations[i], linewidth=2, color=colors[i], label=labels[i])
-    ax.set_title(f'Approximation {labels[i]}', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Price (USD)', fontsize=9)
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc='upper left', fontsize=8)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    for i in range(5):
+        ax = plt.subplot(gs[i+1])
+        offset_a = len(prices) - len(approximations[i])
+        dates_a = dates[offset_a:]
+        ax.plot(dates_a, approximations[i], linewidth=2, color=colors[i], label=labels[i])
+        ax.set_title(f'Approximation {labels[i]}', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Price (USD)', fontsize=9)
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='upper left', fontsize=8)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
     ax.set_xlabel('Date', fontsize=10)
     plt.savefig(f'{output_dir}/02_progressive_approximations.png', dpi=300, bbox_inches='tight')
@@ -296,33 +294,30 @@ except Exception as e:
 print("[3/5] Frequency bands... ", end='', flush=True)
 
 try:
+    fig = plt.figure(figsize=(20, 16), dpi=300)
+    gs = GridSpec(6, 1, figure=fig, hspace=0.35)
+    fig.suptitle('Frequency Band Decomposition', fontsize=18, fontweight='bold')
 
-fig = plt.figure(figsize=(20, 16), dpi=300)
-gs = GridSpec(6, 1, figure=fig, hspace=0.35)
-fig.suptitle('Frequency Band Decomposition', fontsize=18, fontweight='bold')
+    ax_orig = plt.subplot(gs[0])
+    ax_orig.plot(dates, prices, 'b-', linewidth=1.5, alpha=0.8)
+    ax_orig.set_title('Original Signal', fontsize=12, fontweight='bold')
+    ax_orig.set_ylabel('Price (USD)', fontsize=10)
+    ax_orig.grid(True, alpha=0.3)
+    ax_orig.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-ax_orig = plt.subplot(gs[0])
-ax_orig.plot(dates, prices, 'b-', linewidth=1.5, alpha=0.8)
-ax_orig.set_title('Original Signal', fontsize=12, fontweight='bold')
-ax_orig.set_ylabel('Price (USD)', fontsize=10)
-ax_orig.grid(True, alpha=0.3)
-ax_orig.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    detail_colors = ['red', 'orange', 'gold', 'green', 'blue']
 
-detail_colors = ['red', 'orange', 'gold', 'green', 'blue']
-
-for i in range(5):
-    ax = plt.subplot(gs[i+1])
-    offset_d = len(prices) - len(details[i])
-    dates_d = dates[offset_d:]
-    ax.plot(dates_d, details[i], linewidth=1, color=detail_colors[i], alpha=0.8)
-    ax.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-    ax.fill_between(dates_d, 0, details[i], alpha=0.3, color=detail_colors[i])
-    ax.set_title(f'Detail Band {i+1}', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Coefficient', fontsize=9)
-    ax.grid(True, alpha=0.3)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
-
-    ax.set_xlabel('Date', fontsize=10)
+    for i in range(5):
+        ax = plt.subplot(gs[i+1])
+        offset_d = len(prices) - len(details[i])
+        dates_d = dates[offset_d:]
+        ax.plot(dates_d, details[i], linewidth=1, color=detail_colors[i], alpha=0.8)
+        ax.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
+        ax.fill_between(dates_d, 0, details[i], alpha=0.3, color=detail_colors[i])
+        ax.set_title(f'Detail Band {i+1}', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Coefficient', fontsize=9)
+        ax.grid(True, alpha=0.3)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
     plt.savefig(f'{output_dir}/03_frequency_bands.png', dpi=300, bbox_inches='tight')
     plt.close()
     print("✓")
