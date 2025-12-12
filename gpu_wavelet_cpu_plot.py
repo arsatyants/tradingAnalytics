@@ -337,39 +337,38 @@ except Exception as e:
 print("[4/5] Anomaly detection... ", end='', flush=True)
 
 try:
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), dpi=300)
+    fig.suptitle('Anomaly Detection Analysis (CPU)', fontsize=16, fontweight='bold')
 
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), dpi=300)
-fig.suptitle('Anomaly Detection Analysis (CPU)', fontsize=16, fontweight='bold')
+    ax1.plot(aligned_dates, detail_gpu, 'b-', linewidth=1, alpha=0.7, label='Detail Coefficients')
+    ax1.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
+    ax1.axhline(y=anomaly_threshold, color='r', linestyle='--', linewidth=1.5, 
+               label=f'Threshold: ${anomaly_threshold:.2f}')
+    ax1.axhline(y=-anomaly_threshold, color='r', linestyle='--', linewidth=1.5)
 
-ax1.plot(aligned_dates, detail_gpu, 'b-', linewidth=1, alpha=0.7, label='Detail Coefficients')
-ax1.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
-ax1.axhline(y=anomaly_threshold, color='r', linestyle='--', linewidth=1.5, 
-           label=f'Threshold: ${anomaly_threshold:.2f}')
-ax1.axhline(y=-anomaly_threshold, color='r', linestyle='--', linewidth=1.5)
+    if len(anomaly_indices) > 0:
+        anomaly_dates = [aligned_dates[i] for i in anomaly_indices if i < len(aligned_dates)]
+        anomaly_values = detail_gpu[anomaly_indices[:len(anomaly_dates)]]
+        ax1.scatter(anomaly_dates, anomaly_values, color='red', s=100, marker='*', 
+                   zorder=5, edgecolors='darkred', linewidth=1, label=f'Anomalies: {len(anomaly_indices)}')
 
-if len(anomaly_indices) > 0:
-    anomaly_dates = [aligned_dates[i] for i in anomaly_indices if i < len(aligned_dates)]
-    anomaly_values = detail_gpu[anomaly_indices[:len(anomaly_dates)]]
-    ax1.scatter(anomaly_dates, anomaly_values, color='red', s=100, marker='*', 
-               zorder=5, edgecolors='darkred', linewidth=1, label=f'Anomalies: {len(anomaly_indices)}')
+    ax1.set_title('Detail Coefficients with Anomaly Markers', fontsize=13)
+    ax1.set_ylabel('Detail Coefficient (USD)', fontsize=11)
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(loc='upper left', fontsize=10)
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-ax1.set_title('Detail Coefficients with Anomaly Markers', fontsize=13)
-ax1.set_ylabel('Detail Coefficient (USD)', fontsize=11)
-ax1.grid(True, alpha=0.3)
-ax1.legend(loc='upper left', fontsize=10)
-ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    ax2.plot(aligned_dates, detail_abs, 'purple', linewidth=1, alpha=0.7, label='Absolute Detail')
+    ax2.axhline(y=anomaly_threshold, color='r', linestyle='--', linewidth=1.5)
+    ax2.fill_between(aligned_dates, 0, anomaly_threshold, alpha=0.2, color='green', label='Normal Range')
+    ax2.fill_between(aligned_dates, anomaly_threshold, detail_abs.max(), alpha=0.2, color='red', label='Anomaly Zone')
 
-ax2.plot(aligned_dates, detail_abs, 'purple', linewidth=1, alpha=0.7, label='Absolute Detail')
-ax2.axhline(y=anomaly_threshold, color='r', linestyle='--', linewidth=1.5)
-ax2.fill_between(aligned_dates, 0, anomaly_threshold, alpha=0.2, color='green', label='Normal Range')
-ax2.fill_between(aligned_dates, anomaly_threshold, detail_abs.max(), alpha=0.2, color='red', label='Anomaly Zone')
-
-ax2.set_title('Volatility Measure', fontsize=13)
-ax2.set_ylabel('Absolute Detail (USD)', fontsize=11)
-ax2.set_xlabel('Date', fontsize=11)
-ax2.grid(True, alpha=0.3)
-ax2.legend(loc='upper left', fontsize=10)
-ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    ax2.set_title('Volatility Measure', fontsize=13)
+    ax2.set_ylabel('Absolute Detail (USD)', fontsize=11)
+    ax2.set_xlabel('Date', fontsize=11)
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(loc='upper left', fontsize=10)
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
     plt.subplots_adjust(hspace=0.3)
     plt.savefig(f'{output_dir}/04_anomaly_detection.png', dpi=300, bbox_inches='tight')
@@ -386,57 +385,59 @@ except Exception as e:
 print("[5/5] Trading signals... ", end='', flush=True)
 
 try:
+    trend = levels[2]
+    offset = len(prices) - len(trend)
+    aligned_prices = prices[offset:]
+    signal_dates = dates[offset:]
+    price_deviation = aligned_prices - trend
+    buffer = np.std(price_deviation) * 0.5
 
-trend = levels[2]
-offset = len(prices) - len(trend)
-aligned_prices = prices[offset:]
-signal_dates = dates[offset:]
-price_deviation = aligned_prices - trend
-buffer = np.std(price_deviation) * 0.5
+    buy_signals = price_deviation < -buffer
+    sell_signals = price_deviation > buffer
 
-buy_signals = price_deviation < -buffer
-sell_signals = price_deviation > buffer
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), dpi=300)
+    fig.suptitle('Trading Signal Generation (CPU)', fontsize=16, fontweight='bold')
 
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), dpi=300)
-fig.suptitle('Trading Signal Generation (CPU)', fontsize=16, fontweight='bold')
+    ax1.plot(signal_dates, aligned_prices, 'b-', linewidth=1.5, alpha=0.7, label='Price')
+    ax1.plot(signal_dates, trend, 'orange', linewidth=2, label='Trend (Level 3)')
+    ax1.fill_between(signal_dates, trend - buffer, trend + buffer, alpha=0.2, color='gray', label='Neutral Zone')
 
-ax1.plot(signal_dates, aligned_prices, 'b-', linewidth=1.5, alpha=0.7, label='Price')
-ax1.plot(signal_dates, trend, 'orange', linewidth=2, label='Trend (Level 3)')
-ax1.fill_between(signal_dates, trend - buffer, trend + buffer, alpha=0.2, color='gray', label='Neutral Zone')
+    buy_dates = [signal_dates[i] for i in range(len(buy_signals)) if buy_signals[i]]
+    buy_prices = aligned_prices[buy_signals]
+    sell_dates = [signal_dates[i] for i in range(len(sell_signals)) if sell_signals[i]]
+    sell_prices = aligned_prices[sell_signals]
 
-buy_dates = [signal_dates[i] for i in range(len(buy_signals)) if buy_signals[i]]
-buy_prices = aligned_prices[buy_signals]
-sell_dates = [signal_dates[i] for i in range(len(sell_signals)) if sell_signals[i]]
-sell_prices = aligned_prices[sell_signals]
+    ax1.scatter(buy_dates, buy_prices, color='green', s=100, marker='^', 
+               zorder=5, label=f'BUY ({buy_signals.sum()})', edgecolors='darkgreen', linewidth=1)
+    ax1.scatter(sell_dates, sell_prices, color='red', s=100, marker='v', 
+               zorder=5, label=f'SELL ({sell_signals.sum()})', edgecolors='darkred', linewidth=1)
 
-ax1.scatter(buy_dates, buy_prices, color='green', s=100, marker='^', 
-           zorder=5, label=f'BUY ({buy_signals.sum()})', edgecolors='darkgreen', linewidth=1)
-ax1.scatter(sell_dates, sell_prices, color='red', s=100, marker='v', 
-           zorder=5, label=f'SELL ({sell_signals.sum()})', edgecolors='darkred', linewidth=1)
+    ax1.set_title('Price with Trading Signals', fontsize=13)
+    ax1.set_ylabel('Price (USD)', fontsize=11)
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(loc='upper left', fontsize=10)
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-ax1.set_title('Price with Trading Signals', fontsize=13)
-ax1.set_ylabel('Price (USD)', fontsize=11)
-ax1.grid(True, alpha=0.3)
-ax1.legend(loc='upper left', fontsize=10)
-ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    ax2.plot(signal_dates, price_deviation, 'purple', linewidth=1.5, alpha=0.7, label='Price Deviation')
+    ax2.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
+    ax2.axhline(y=buffer, color='r', linestyle='--', linewidth=1, alpha=0.7, label='Sell Threshold')
+    ax2.axhline(y=-buffer, color='g', linestyle='--', linewidth=1, alpha=0.7, label='Buy Threshold')
+    ax2.fill_between(signal_dates, -buffer, buffer, alpha=0.2, color='gray')
 
-ax2.plot(signal_dates, price_deviation, 'purple', linewidth=1.5, alpha=0.7, label='Price Deviation')
-ax2.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
-ax2.axhline(y=buffer, color='r', linestyle='--', linewidth=1, alpha=0.7, label='Sell Threshold')
-ax2.axhline(y=-buffer, color='g', linestyle='--', linewidth=1, alpha=0.7, label='Buy Threshold')
-ax2.fill_between(signal_dates, -buffer, buffer, alpha=0.2, color='gray')
+    ax2.set_title('Deviation from Trend', fontsize=13)
+    ax2.set_ylabel('Deviation (USD)', fontsize=11)
+    ax2.set_xlabel('Date', fontsize=11)
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(loc='upper left', fontsize=10)
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-ax2.set_title('Deviation from Trend', fontsize=13)
-ax2.set_ylabel('Deviation (USD)', fontsize=11)
-ax2.set_xlabel('Date', fontsize=11)
-ax2.grid(True, alpha=0.3)
-ax2.legend(loc='upper left', fontsize=10)
-ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
-
-plt.subplots_adjust(hspace=0.3)
-plt.savefig(f'{output_dir}/05_trading_signals.png', dpi=300, bbox_inches='tight')
-plt.close()
-print("✓")
+    plt.subplots_adjust(hspace=0.3)
+    plt.savefig(f'{output_dir}/05_trading_signals.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print("✓")
+except Exception as e:
+    print(f"✗ Error: {e}")
+    exit(1)
 
 # =============================================================================
 # SUMMARY
