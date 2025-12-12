@@ -167,6 +167,15 @@ threshold = 3.0
 anomaly_threshold = median + threshold * mad
 anomaly_indices = np.where(detail_abs > anomaly_threshold)[0]
 
+if not MATPLOTLIB_AVAILABLE:
+    print("\n" + "=" * 70)
+    print("SKIPPING PLOTS (matplotlib unavailable)")
+    print("=" * 70)
+    print("\n✓ Wavelet decomposition completed successfully")
+    print(f"  Processing Time: {compute_time*1000:.2f}ms")
+    print("=" * 70)
+    exit(0)
+
 print("=" * 70)
 print("GENERATING PLOTS")
 print("=" * 70)
@@ -176,6 +185,8 @@ print("=" * 70)
 # =============================================================================
 
 print("\n[1/5] Main overview plot... ", end='', flush=True)
+
+try:
 
 fig = plt.figure(figsize=(16, 12), dpi=300)
 gs = GridSpec(4, 1, figure=fig, hspace=0.3)
@@ -228,16 +239,21 @@ ax4.set_xlabel('Date', fontsize=11)
 ax4.grid(True, alpha=0.3)
 ax4.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-plt.tight_layout()
-plt.savefig(f'{output_dir}/01_main_overview.png', dpi=300, bbox_inches='tight')
-plt.close()
-print("✓")
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/01_main_overview.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print("✓")
+except Exception as e:
+    print(f"✗ Error: {e}")
+    exit(1)
 
 # =============================================================================
 # PLOT 2: PROGRESSIVE APPROXIMATIONS
 # =============================================================================
 
 print("[2/5] Progressive approximations... ", end='', flush=True)
+
+try:
 
 fig = plt.figure(figsize=(20, 16), dpi=300)
 gs = GridSpec(6, 1, figure=fig, hspace=0.35)
@@ -265,16 +281,21 @@ for i in range(5):
     ax.legend(loc='upper left', fontsize=8)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-ax.set_xlabel('Date', fontsize=10)
-plt.savefig(f'{output_dir}/02_progressive_approximations.png', dpi=300, bbox_inches='tight')
-plt.close()
-print("✓")
+    ax.set_xlabel('Date', fontsize=10)
+    plt.savefig(f'{output_dir}/02_progressive_approximations.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print("✓")
+except Exception as e:
+    print(f"✗ Error: {e}")
+    exit(1)
 
 # =============================================================================
 # PLOT 3: FREQUENCY BANDS
 # =============================================================================
 
 print("[3/5] Frequency bands... ", end='', flush=True)
+
+try:
 
 fig = plt.figure(figsize=(20, 16), dpi=300)
 gs = GridSpec(6, 1, figure=fig, hspace=0.35)
@@ -301,16 +322,21 @@ for i in range(5):
     ax.grid(True, alpha=0.3)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-ax.set_xlabel('Date', fontsize=10)
-plt.savefig(f'{output_dir}/03_frequency_bands.png', dpi=300, bbox_inches='tight')
-plt.close()
-print("✓")
+    ax.set_xlabel('Date', fontsize=10)
+    plt.savefig(f'{output_dir}/03_frequency_bands.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print("✓")
+except Exception as e:
+    print(f"✗ Error: {e}")
+    exit(1)
 
 # =============================================================================
 # PLOT 4: ANOMALY DETECTION
 # =============================================================================
 
 print("[4/5] Anomaly detection... ", end='', flush=True)
+
+try:
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), dpi=300)
 fig.suptitle('Anomaly Detection Analysis (CPU)', fontsize=16, fontweight='bold')
