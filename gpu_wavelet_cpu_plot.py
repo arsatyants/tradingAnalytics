@@ -3,18 +3,21 @@ CPU-Only Wavelet Decomposition (No OpenGL Dependencies)
 ========================================================
 
 Pure NumPy implementation for Raspberry Pi Zero and systems without GPU support.
-Lazy-loads matplotlib to avoid bus errors on low-end hardware.
+Handles ccxt/matplotlib import failures gracefully with demo mode.
 
 Usage:
-    python gpu_wavelet_cpu_plot.py              # Full mode with plots
-    python gpu_wavelet_cpu_plot.py --no-plots   # Computation only (Pi Zero safe)
+    python gpu_wavelet_cpu_plot.py                      # Full mode with live data
+    python gpu_wavelet_cpu_plot.py --demo               # Demo mode with synthetic data
+    python gpu_wavelet_cpu_plot.py --demo --no-plots    # Computation only (Pi Zero safe)
+
+Raspberry Pi Zero:
+    The ccxt library causes bus errors on Pi Zero. Use --demo flag to bypass.
 
 Features:
 - Pure NumPy convolution (no GPU dependencies)
-- Lazy matplotlib loading (safer for Pi Zero)
+- Demo mode with synthetic BTC data (Pi Zero compatible)
+- Lazy matplotlib loading (safer for low-end systems)
 - High-resolution plots (300 DPI) when available
-- Real BTC data from Binance
-- Works on Raspberry Pi Zero, Pi 1, 2, 3
 - Saves plots to 'wavelet_plots_cpu/' directory
 """
 
@@ -56,10 +59,25 @@ def init_matplotlib():
         print("  Run with --no-plots to skip visualization")
         return False
 
-import ccxt
-
 # Check for --no-plots flag
 SKIP_PLOTS = '--no-plots' in sys.argv
+
+# Try importing ccxt (may fail on Pi Zero with bus error)
+CCXT_AVAILABLE = False
+try:
+    import ccxt
+    CCXT_AVAILABLE = True
+except Exception as e:
+    print(f"\n⚠ WARNING: ccxt import failed: {e}")
+    print("  This script requires ccxt for live data fetching")
+    print("  On Raspberry Pi Zero, ccxt causes bus errors")
+    print("\nSolution: Use synthetic data or fetch data on another machine")
+    if '--demo' not in sys.argv:
+        print("\nTip: Run with --demo flag to use synthetic BTC data")
+        sys.exit(1)
+
+# Check for demo mode
+USE_DEMO_DATA = '--demo' in sys.argv or not CCXT_AVAILABLE
 
 # Create output directory
 output_dir = 'wavelet_plots_cpu'
@@ -101,53 +119,74 @@ def cpu_convolve(signal, filter_coeffs):
     return np.convolve(signal, filter_coeffs, mode='valid').astype(np.float32)
 
 # =============================================================================
-# FETCH REAL BTC DATA
+# FETCH OR GENERATE DATA
 # =============================================================================
 
-print("=" * 70)
-print("FETCHING BTC DATA FROM BINANCE")
-print("=" * 70)
-
-try:
-    exchange = ccxt.binance({'enableRateLimit': True})
-    symbol = 'BTC/USDT'
-    timeframe = '5m'
+if USE_DEMO_DATA:
+    print("=" * 70)
+    print("GENERATING SYNTHETIC BTC DATA (Demo Mode)")
+    print("=" * 70)
     
-    # Calculate timestamp for 2 weeks back
-    two_weeks_ago = datetime.now() - timedelta(weeks=2)
-    since = int(two_weeks_ago.timestamp() * 1000)
-    
-    print(f"\n  Downloading {symbol} {timeframe} data from {two_weeks_ago.strftime('%Y-%m-%d %H:%M')}... ", end='', flush=True)
-    ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=1000)
-    print("✓")
-    
-    timestamps = np.array([candle[0] for candle in ohlcv])
-    prices = np.array([candle[4] for candle in ohlcv], dtype=np.float32)
-    volumes = np.array([candle[5] for candle in ohlcv], dtype=np.float32)
-    dates = [datetime.fromtimestamp(ts / 1000) for ts in timestamps]
-    
-    print(f"  Data range: {dates[0].strftime('%Y-%m-%d')} to {dates[-1].strftime('%Y-%m-%d')}")
-    print(f"  Current BTC: ${prices[-1]:,.2f}")
-    print(f"  Change: {((prices[-1] - prices[0]) / prices[0] * 100):+.2f}%")
-    print(f"  Data points: {len(prices)}\n")
-    
-except Exception as e:
-    print(f"\n✗ Error: {e}")
-    print("  Generating synthetic data...")
-    
-    # Fallback to synthetic data
+    # Generate realistic synthetic BTC data
     np.random.seed(42)
-    n_points = 1000
-    initial_price = 50000.0
-    drift = 0.0001
-    volatility = 0.02
-    returns = np.random.randn(n_points) * volatility + drift
-    price_multipliers = np.exp(np.cumsum(returns))
-    prices = (initial_price * price_multipliers).astype(np.float32)
-    volumes = np.random.uniform(100, 1000, n_points).astype(np.float32)
-    dates = [datetime.now() - timedelta(minutes=5*(n_points-i)) for i in range(n_points)]
+    num_points = 1000
     
-    print(f"  Generated {n_points} synthetic price points\n")
+    print(f"\n  Generating {num_points} synthetic price points... ", end='', flush=True)
+    
+    # Base price around 87000 with trend and noise
+    t = np.linspace(0, 4 * np.pi, num_points)
+    trend = 87000 + 3000 * np.sin(t / 3)  # Long-term trend
+    volatility = 800 * np.sin(t) + 400 * np.sin(3 * t)  # Medium-term cycles
+    noise = np.random.randn(num_points) * 200  # Random noise
+    prices = (trend + volatility + noise).astype(np.float32)
+    
+    # Generate synthetic volumes
+    volumes = (np.random.randn(num_points) * 5 + 50).astype(np.float32)
+    volumes = np.abs(volumes)
+    
+    # Generate timestamps
+    two_weeks_ago = datetime.now() - timedelta(weeks=2)
+    timestamps = [two_weeks_ago + timedelta(minutes=5*i) for i in range(num_points)]
+    dates = timestamps
+    
+    print("✓")
+    print(f"  Data range: {dates[0].strftime('%Y-%m-%d')} to {dates[-1].strftime('%Y-%m-%d')}")
+    print(f"  Current BTC: ${prices[-1]:,.2f} (synthetic)")
+    print(f"  Change: {((prices[-1] / prices[0] - 1) * 100):.2f}%")
+    print(f"  Data points: {len(prices)}")
+    
+else:
+    print("=" * 70)
+    print("FETCHING BTC DATA FROM BINANCE")
+    print("=" * 70)
+
+    try:
+        exchange = ccxt.binance({'enableRateLimit': True})
+        symbol = 'BTC/USDT'
+        timeframe = '5m'
+        
+        # Calculate timestamp for 2 weeks back
+        two_weeks_ago = datetime.now() - timedelta(weeks=2)
+        since = int(two_weeks_ago.timestamp() * 1000)
+        
+        print(f"\n  Downloading {symbol} {timeframe} data from {two_weeks_ago.strftime('%Y-%m-%d %H:%M')}... ", end='', flush=True)
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=1000)
+        print("✓")
+        
+        timestamps = np.array([candle[0] for candle in ohlcv])
+        prices = np.array([candle[4] for candle in ohlcv], dtype=np.float32)
+        volumes = np.array([candle[5] for candle in ohlcv], dtype=np.float32)
+        dates = [datetime.fromtimestamp(ts / 1000) for ts in timestamps]
+        
+        print(f"  Data range: {dates[0].strftime('%Y-%m-%d')} to {dates[-1].strftime('%Y-%m-%d')}")
+        print(f"  Current BTC: ${prices[-1]:,.2f}")
+        print(f"  Change: {((prices[-1] - prices[0]) / prices[0] * 100):+.2f}%")
+        print(f"  Data points: {len(prices)}\n")
+        
+    except Exception as e:
+        print(f"\n✗ Error: {e}")
+        print("  Failed to fetch data from Binance")
+        sys.exit(1)
 
 # =============================================================================
 # PERFORM WAVELET DECOMPOSITION
