@@ -18,6 +18,11 @@ Raspberry Pi 5 Support:
 - Uses Mesa drivers with V3D backend
 - Requires: sudo apt install python3-opengl libglfw3 libglfw3-dev
 
+CPU-Only Mode:
+- Works on Raspberry Pi Zero, Pi 1, 2, 3 and any system without OpenGL
+- Set WAVELET_FORCE_CPU=1 environment variable to force CPU mode
+- Automatically detected on older Pi models
+
 Installation:
     pip install PyOpenGL PyOpenGL_accelerate glfw numpy
     # On Raspberry Pi OS:
@@ -64,9 +69,11 @@ if SKIP_OPENGL and not FORCE_CPU:
 
 # Try to import OpenGL components only if not skipped
 OPENGL_AVAILABLE = False
+glfw = None
 if not SKIP_OPENGL:
     try:
-        import glfw
+        import glfw as _glfw
+        glfw = _glfw
         from OpenGL.GL import *
         from OpenGL.GL import shaders
         OPENGL_AVAILABLE = True
@@ -75,10 +82,13 @@ if not SKIP_OPENGL:
         print("  Install with: pip install PyOpenGL PyOpenGL_accelerate glfw")
     except Exception as e:
         print(f"⚠ OpenGL import failed: {e}")
-else:
+
+if SKIP_OPENGL or not OPENGL_AVAILABLE:
     print("  Using CPU-only mode (NumPy convolution)")
 
 import ccxt
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for headless operation
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
