@@ -18,9 +18,9 @@ Raspberry Pi 5 Support:
 - Uses Mesa drivers with V3D backend
 - Requires: sudo apt install python3-opengl libglfw3 libglfw3-dev
 
-CPU-Only Mode:
-- Works on Raspberry Pi Zero, Pi 1, 2, 3 and any system without OpenGL
-- Set WAVELET_FORCE_CPU=1 environment variable to force CPU mode
+CPU-Only Mode (for Raspberry Pi Zero and older):
+- Run with: python gpu_wavelet_opengl_plot.py --cpu
+- Or set: WAVELET_FORCE_CPU=1 python gpu_wavelet_opengl_plot.py
 - Automatically detected on older Pi models
 
 Installation:
@@ -29,13 +29,32 @@ Installation:
     sudo apt install libglfw3 libglfw3-dev mesa-utils
 """
 
+import sys
+import os
+
+# =============================================================================
+# VERY EARLY CHECK: --cpu flag must be checked before ANY other imports
+# =============================================================================
+
+# Check command line FIRST - before anything else
+FORCE_CPU = '--cpu' in sys.argv or os.environ.get('WAVELET_FORCE_CPU', '').lower() in ('1', 'true', 'yes')
+
+if FORCE_CPU:
+    # Remove --cpu from argv so it doesn't interfere with other parsing
+    if '--cpu' in sys.argv:
+        sys.argv.remove('--cpu')
+    print("=" * 70)
+    print("WAVELET DECOMPOSITION - CPU MODE")
+    print("=" * 70)
+    print("\n  CPU-only mode enabled (--cpu flag or WAVELET_FORCE_CPU)")
+    print("  Skipping all OpenGL imports to avoid bus errors\n")
+
 import numpy as np
 import time
-import os
 from datetime import datetime, timedelta
 
 # =============================================================================
-# EARLY DETECTION: Skip OpenGL on unsupported hardware
+# HARDWARE DETECTION (only if not forcing CPU)
 # =============================================================================
 
 def is_low_end_pi():
@@ -58,19 +77,19 @@ def is_low_end_pi():
         pass
     return False
 
-# Check environment variable to force CPU mode
-FORCE_CPU = os.environ.get('WAVELET_FORCE_CPU', '').lower() in ('1', 'true', 'yes')
-
 # Skip OpenGL entirely on low-end Pi to avoid bus errors during import
-SKIP_OPENGL = FORCE_CPU or is_low_end_pi()
-
-if SKIP_OPENGL and not FORCE_CPU:
-    print("⚠ Raspberry Pi Zero/older model detected - skipping OpenGL to avoid bus errors")
+if not FORCE_CPU:
+    SKIP_OPENGL = is_low_end_pi()
+    if SKIP_OPENGL:
+        print("⚠ Raspberry Pi Zero/older model detected - skipping OpenGL to avoid bus errors")
+        print("  Using CPU-only mode (NumPy convolution)")
+else:
+    SKIP_OPENGL = True
 
 # Try to import OpenGL components only if not skipped
 OPENGL_AVAILABLE = False
 glfw = None
-if not SKIP_OPENGL:
+if not SKIP_OPENGL and not FORCE_CPU:
     try:
         import glfw as _glfw
         glfw = _glfw
@@ -83,8 +102,9 @@ if not SKIP_OPENGL:
     except Exception as e:
         print(f"⚠ OpenGL import failed: {e}")
 
-if SKIP_OPENGL or not OPENGL_AVAILABLE:
-    print("  Using CPU-only mode (NumPy convolution)")
+if SKIP_OPENGL or FORCE_CPU or not OPENGL_AVAILABLE:
+    if not FORCE_CPU:
+        print("  Using CPU-only mode (NumPy convolution)")
 
 import ccxt
 import matplotlib
