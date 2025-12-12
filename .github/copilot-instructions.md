@@ -1,111 +1,87 @@
 # Trading Analytics - AI Agent Instructions
 
 ## Project Overview
-Cryptocurrency trading analytics toolkit focused on BTC and SOL price prediction and anomaly detection using deep learning (LSTM) and signal processing techniques (wavelet transforms). All analysis is done in Jupyter notebooks with real-time data from Binance via CCXT.
+Cryptocurrency trading toolkit for BTC/SOL price prediction and anomaly detection using LSTM networks and wavelet transforms. Real-time data from Binance via CCXT.
 
-## Architecture & Data Flow
+## File Structure
+- **btc-prediction.ipynb**: LSTM prediction + wavelet filtering + anomaly detection (BTC)
+- **wave_nada.ipynb**: Wavelet analysis + Stochastic Oscillator + Nadaraya-Watson smoothing (SOL)
+- **gpu_wavelet_cuda_plot.py**: PyTorch/CUDA wavelet acceleration with auto CPU fallback
+- **gpu_wavelet_gpu_plot.py**: OpenCL wavelet acceleration (multi-platform: NVIDIA/AMD/ARM Mali)
+- **gpu_wavelet_opengl_plot.py**: OpenGL compute shader acceleration (Raspberry Pi 5 / VideoCore VII)
 
-### Core Components
-1. **Data Acquisition** (`btc-prediction.ipynb`, `wave_nada.ipynb`)
-   - Live data fetching from Binance using `ccxt.binance()`
-   - Historical OHLCV data loaded in batches via `fetch_ohlcv()`
-   - Data normalized with `MinMaxScaler(feature_range=(-1, 1))` for neural network compatibility
+## Critical Patterns
 
-2. **LSTM Prediction Pipeline** (`btc-prediction.ipynb`)
-   - Custom LSTM model for multi-step price forecasting (default: 3 steps ahead)
-   - GPU acceleration via CUDA when available
-   - Model persistence: `lstm_model.pth`, `scaler.pth`
-
-3. **Wavelet Analysis** (both notebooks)
-   - Multi-level wavelet decomposition for trend/volatility separation
-   - Anomaly detection using soft thresholding on detail coefficients
-   - Continuous Wavelet Transform (CWT) for time-frequency analysis
-
-4. **Technical Indicators** (`wave_nada.ipynb`)
-   - Stochastic Oscillator (%K, %D) with custom implementation
-   - Nadaraya-Watson kernel regression for smoothing
-
-## Critical Patterns & Conventions
-
-### Data Loading Pattern
-All data loading follows this structure:
+### Data Loading (all notebooks/scripts use this pattern)
 ```python
 exchange = ccxt.binance()
-since = exchange.parse8601('YYYY-MM-DDTHH:MM:SSZ')
-# Paginated fetching until exchange.milliseconds()
+since = exchange.parse8601('2024-12-01T00:00:00Z')
+data = exchange.fetch_ohlcv(symbol, timeframe, since, limit)  # Paginated loop
 df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 df.set_index('timestamp', inplace=True)
 ```
 
-### Scaling Convention
-**Critical**: All price data must be scaled to `[-1, 1]` range before LSTM processing. Original prices recovered via `scaler.inverse_transform()` for visualization/output.
-
-### Wavelet Decomposition Levels
-- **Trend extraction**: Filter out levels 1 to N (keep level 0 approximation)
-- **Volatility extraction**: Filter out level 0 (keep high-frequency details)
-- Common wavelets: `'db4'`, `'db6'`, `'haar'`, `'coif1'`
-- Typical decomposition depth: 5-9 levels
+### Scaling Convention (REQUIRED for LSTM)
+```python
+scaler = MinMaxScaler(feature_range=(-1, 1))  # Always [-1, 1] range
+df['close'] = scaler.fit_transform(df['close'].values.reshape(-1, 1))
+# Recover: scaler.inverse_transform(predictions)
+```
 
 ### Device Management
-Always check CUDA availability:
 ```python
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-# Move tensors/models to device
+model = LSTM().to(device)
+tensor = tensor.to(device)
 ```
 
-## Common Workflows
+### Wavelet Analysis
+- **Trend extraction**: `levels_to_filter=[1,2,3,4,5]` (keep level 0 approximation)
+- **Volatility extraction**: `levels_to_filter=[0]` (keep high-frequency details)
+- Common wavelets: `'db4'`, `'db6'`, `'haar'`, `'coif1'`
+- Decomposition depth: 5-9 levels typical
 
-### Adding New Cryptocurrency Analysis
-1. Update `symbol` variable (e.g., `'ETH/USDT'`, `'SOL/USDT'`)
-2. Adjust `timeframe` (`'1h'`, `'15m'`, `'1d'`)
-3. Set `since_date` for historical range
-4. Rerun data loading cell - no code changes needed
-
-### Modifying LSTM Architecture
-Key parameters in model definition:
-- `input_dim`: Number of features (default: 1 for close price only)
-- `hidden_layer_size`: LSTM hidden units (default: 100)
-- `output_dim`: Prediction dimension (default: 1)
-- `train_seq_length`, `test_seq_length`: Lookback windows
-
-### Anomaly Detection Tuning
-Adjust sensitivity via:
-- `level` parameter in `detect_anomalies_level()`: higher = broader patterns
-- `anomaly_levels` list: which frequency bands to analyze `[0]` (trend), `[1,2,3]` (volatility bands)
-- Threshold calculation uses MAD (Median Absolute Deviation): modify divisor `0.6745` for sensitivity
-
-## Dependencies & Environment
-
-### Installation Order (from `env.ipynb`)
-Core dependencies must be installed in this sequence:
-```
-ccxt, pandas, torch, numpy, scikit-learn, matplotlib, seaborn, 
-mplfinance, ta, pywavelets, scipy, statsmodels, jupyterlab, 
-onnx, onnxscript, ssqueezepy
-```
-
-**Note**: `env.ipynb` contains commented installation commands - uncomment selectively as needed.
-
-## Visualization Patterns
-
-### Multi-Panel Price Charts
-Use `plt.figure(figsize=(14,10))` for clarity. When plotting predictions, extend index with:
+### Anomaly Detection
 ```python
-future_dates = pd.date_range(start=df.index[-1], periods=len(predictions) + 1, freq='h')[1:]
+anomalies = detect_anomalies_level(data, wavelet='haar', level=5, anomaly_levels=[0])
+# anomaly_levels: [0]=trend anomalies, [1,2,3]=volatility bands
+# Threshold uses MAD: np.median(np.abs(coeff)) / 0.6745
 ```
 
-### Wavelet Coefficient Plots
-Stack decomposition levels vertically with `plt.subplot(levels+1, 1, i)` for visual comparison across frequency bands.
+## Development Workflow
 
-## Known Limitations
-- No automated backtesting framework - predictions are forward-only
-- Scaler must be saved/loaded with model for deployment
-- LSTM requires sequential execution - cells cannot be run out of order
-- Wavelet reconstruction may introduce edge artifacts at series boundaries
+### Adding New Cryptocurrency
+Only change these variables, rerun cells:
+```python
+symbol = 'ETH/USDT'      # Or 'SOL/USDT', 'BTC/USDT'
+timeframe = '1h'          # Options: '15m', '1h', '4h', '1d'
+since_date = '2025-01-01T00:00:00Z'
+```
 
-## File Relationships
-- `btc-prediction.ipynb`: Complete BTC analysis (LSTM + wavelets + anomalies)
-- `wave_nada.ipynb`: SOL-focused with Nadaraya-Watson and Stochastic Oscillator
-- `env.ipynb`: Dependency installation helper
-- No Python modules - all code is notebook-native
+### Running GPU Scripts
+```bash
+python gpu_wavelet_cuda_plot.py    # CUDA/PyTorch (auto CPU fallback)
+python gpu_wavelet_gpu_plot.py     # OpenCL (multi-platform GPU)
+python gpu_wavelet_opengl_plot.py  # OpenGL compute (Raspberry Pi 5)
+# Outputs saved to wavelet_plots_cuda/, wavelet_plots/, or wavelet_plots_opengl/
+```
+
+### Raspberry Pi 5 Setup (OpenGL)
+```bash
+sudo apt install libglfw3 libglfw3-dev mesa-utils
+pip install PyOpenGL PyOpenGL_accelerate glfw
+python gpu_wavelet_opengl_plot.py  # Uses VideoCore VII GPU
+```
+
+### Environment Setup
+```bash
+pip install -r requirements.txt
+# Optional GPU: pip install pyopencl (for OpenCL scripts)
+```
+
+## Key Constraints
+- Notebooks must run cells **sequentially** - kernel state dependencies
+- Scaler must be saved alongside model for inference
+- Wavelet reconstruction may have edge artifacts at series boundaries
+- All code is notebook-native - no reusable Python modules
