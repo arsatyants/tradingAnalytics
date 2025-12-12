@@ -9,14 +9,17 @@ A cryptocurrency trading analytics toolkit for price prediction and anomaly dete
 - **Anomaly Detection**: Automated detection of price anomalies across frequency bands
 - **Technical Indicators**: Stochastic Oscillator and Nadaraya-Watson kernel regression
 - **Real-Time Data**: Live cryptocurrency price feeds from Binance via CCXT
-- **GPU Acceleration**: CUDA support for faster model training and inference
+- **GPU Acceleration**: Multi-platform GPU support (NVIDIA CUDA, ARM Mali, AMD)
+- **High-Resolution Visualizations**: Publication-quality plots with progressive approximation analysis
 
 ## 📊 Supported Analysis
 
-| Notebook | Cryptocurrency | Key Features |
+| Notebook/Script | Cryptocurrency | Key Features |
 |----------|---------------|--------------|
 | `btc-prediction.ipynb` | BTC/USDT | LSTM prediction, wavelet filtering, CWT spectrograms, anomaly detection |
 | `wave_nada.ipynb` | SOL/USDT | Wavelet decomposition, Stochastic Oscillator, Nadaraya-Watson smoothing |
+| `gpu_wavelet_gpu_plot.py` | BTC/USDT | GPU-accelerated OpenCL wavelets, multi-platform support, high-res PNG plots |
+| `gpu_wavelet_plot_cuda.py` | BTC/USDT | CUDA/PyTorch wavelets, automatic CPU fallback, 6-panel visualization |
 
 ## 🛠️ Installation
 
@@ -38,14 +41,36 @@ cd tradingAnalytics
 Open `env.ipynb` and uncomment the installation commands you need, or install via pip:
 
 ```bash
+# Core dependencies
 pip install ccxt pandas torch numpy scikit-learn matplotlib seaborn \
             mplfinance ta pywavelets scipy statsmodels jupyterlab \
             onnx onnxscript ssqueezepy
+
+# For GPU-accelerated wavelet scripts (optional)
+pip install pyopencl  # For OpenCL (multi-platform GPU support)
+```
+
+For OpenCL on Linux systems, you may also need:
+```bash
+# Ubuntu/Debian
+sudo apt install ocl-icd-opencl-dev clinfo
+
+# For NVIDIA GPUs - drivers already include OpenCL
+# For ARM Mali (Orange Pi/Raspberry Pi) - use Mesa Rusticl with Panfrost
 ```
 
 3. **Launch Jupyter Lab**
 ```bash
 jupyter lab
+```
+
+4. **Run GPU wavelet scripts** (optional)
+```bash
+# Auto-detect GPU and generate high-resolution plots
+python gpu_wavelet_gpu_plot.py
+
+# Or use CUDA/PyTorch version
+python gpu_wavelet_plot_cuda.py
 ```
 
 4. **Open a notebook** and start with the data loading cells
@@ -140,9 +165,33 @@ since_date = '2025-11-01T00:00:00Z'
 ```
 
 ### GPU/CPU Selection
+
+**For Notebooks (LSTM):**
 ```python
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Using device: {device}")
+```
+
+**For GPU Wavelet Scripts:**
+
+The `gpu_wavelet_gpu_plot.py` script automatically detects and selects the best available GPU:
+
+```bash
+# Works on NVIDIA GPUs
+python gpu_wavelet_gpu_plot.py
+
+# Works on ARM Mali GPUs (Orange Pi, Raspberry Pi)
+python gpu_wavelet_gpu_plot.py
+
+# Works on AMD GPUs
+python gpu_wavelet_gpu_plot.py
+```
+
+Auto-detection priority: **NVIDIA CUDA** → **AMD** → **Mesa Rusticl (ARM Mali)** → **Intel** → **CPU fallback**
+
+For CUDA-specific acceleration with PyTorch:
+```bash
+python gpu_wavelet_plot_cuda.py  # Requires PyTorch with CUDA
 ```
 
 ### LSTM Hyperparameters
@@ -160,6 +209,22 @@ The notebooks generate multiple visualization types:
 - **CWT spectrograms**: Time-frequency analysis showing activity patterns
 - **Anomaly overlays**: Detected anomalies highlighted on price data
 - **Technical indicators**: Stochastic Oscillator with overbought/oversold zones
+
+### GPU Wavelet Script Outputs
+
+The GPU-accelerated scripts generate 6 high-resolution PNG images (300 DPI):
+
+1. **Main Overview** (`01_main_overview.png`) - 4-panel view: price, trend, detail coefficients, volume
+2. **Progressive Approximations** (`02a_progressive_approximations.png`) - Shows how signal gets smoother at each decomposition level with difference overlays
+3. **Frequency Bands** (`02b_frequency_bands.png`) - Detail coefficients separated by frequency (1-2h, 2-4h, 4-8h, 8-16h, 16h+)
+4. **Anomaly Detection** (`03_anomaly_detection.png`) - Volatility analysis with threshold-based anomaly markers
+5. **Trading Signals** (`04_trading_signals.png`) - Buy/sell signals based on deviation from trend
+6. **Statistics Dashboard** (`05_statistics_dashboard.png`) - Comprehensive metrics, distributions, and rolling volatility
+
+**Performance Comparison:**
+- OpenCL (NVIDIA RTX 4060): ~0.6ms for wavelet decomposition
+- CUDA/PyTorch (same GPU): ~121ms (includes framework overhead)
+- OpenCL speedup: **200x faster** for raw wavelet operations
 
 ## 🔬 Methodology
 
@@ -187,13 +252,17 @@ The notebooks generate multiple visualization types:
 
 ```
 tradingAnalytics/
-├── btc-prediction.ipynb    # BTC analysis: LSTM + wavelets + anomalies
-├── wave_nada.ipynb         # SOL analysis: wavelets + technical indicators
-├── env.ipynb               # Dependency installation helper
+├── btc-prediction.ipynb          # BTC analysis: LSTM + wavelets + anomalies
+├── wave_nada.ipynb               # SOL analysis: wavelets + technical indicators
+├── env.ipynb                     # Dependency installation helper
+├── gpu_wavelet_gpu_plot.py       # OpenCL GPU wavelet decomposition (multi-platform)
+├── gpu_wavelet_plot_cuda.py      # CUDA/PyTorch wavelet decomposition
+├── gpu_wavelet_detailed.py       # ASCII console visualization version
 ├── .github/
 │   └── copilot-instructions.md  # AI agent development guide
-├── README.md               # This file
-└── LICENSE                 # Project license
+├── README.md                     # This file
+├── WIKI.md                       # Detailed documentation
+└── LICENSE                       # Project license
 ```
 
 ## 🎯 Use Cases
@@ -234,6 +303,8 @@ This project is licensed under the terms specified in the LICENSE file.
 - [PyWavelets](https://pywavelets.readthedocs.io/) for wavelet transform library
 - [PyTorch](https://pytorch.org/) for deep learning framework
 - [ssqueezepy](https://github.com/OverLordGoldDragon/ssqueezepy) for CWT analysis
+- [PyOpenCL](https://documen.tician.de/pyopencl/) for GPU compute acceleration
+- [Panfrost](https://docs.mesa3d.org/drivers/panfrost.html) for open-source ARM Mali GPU support
 
 ## 📚 Further Reading
 

@@ -766,27 +766,54 @@ Used in wave_nada.ipynb for multi-scale trend analysis.
 """
 
 print("\nDecomposing into 5 levels...")
+print("\nMulti-level wavelet decomposition creates a pyramid:")
+print("  - Each level extracts BOTH approximation (trend) and detail (changes)")
+print("  - Approximation at level N becomes input for level N+1")
+print("  - Details capture frequency components at each scale\n")
 
 # Start with original prices
 current_signal = prices
-levels = []
+approximations = []
+details = []
 
 for level in range(5):
-    # Apply low-pass filter (extract trend)
-    current_signal = gpu_convolve(current_signal, haar_low_pass, convolve_kernel)
-    levels.append(current_signal)
+    # Apply both filters at this scale
+    approx = gpu_convolve(current_signal, haar_low_pass, convolve_kernel)
+    detail = gpu_convolve(current_signal, haar_high_pass, convolve_kernel)
     
-    print(f"  Level {level+1}: {len(current_signal):5d} points, "
-          f"range: ${current_signal.min():,.2f} - ${current_signal.max():,.2f}")
+    approximations.append(approx)
+    details.append(detail)
+    
+    print(f"  Level {level+1}:")
+    print(f"    Approximation: {len(approx):5d} points, "
+          f"range: ${approx.min():,.2f} - ${approx.max():,.2f}")
+    print(f"    Detail:        {len(detail):5d} points, "
+          f"range: ${detail.min():+,.2f} - ${detail.max():+,.2f}")
+    
+    # Next level works on approximation (coarser scale)
+    current_signal = approx
+
+# Keep levels for backward compatibility
+levels = approximations
 
 # Visualize multi-level decomposition
 print("\n" + "=" * 70)
 print("MULTI-LEVEL DECOMPOSITION VISUALIZATION")
 print("=" * 70)
+print("\nShowing APPROXIMATIONS (trends at each scale):")
 
-for i, level_data in enumerate(levels[:4]):
+for i, level_data in enumerate(approximations[:4]):
+    freq_name = ['High-Freq Trend', 'Medium-Freq Trend', 'Low-Freq Trend', 'Very Low-Freq Trend'][i]
     plot_ascii(level_data[:150], height=8, width=70, 
-               title=f"Level {i+1} - Frequency: {'High' if i==0 else 'Medium' if i<3 else 'Low'}")
+               title=f"Level {i+1} Approximation - {freq_name}")
+
+print("\nShowing DETAILS (changes at each scale):")
+print("Note: Details oscillate around zero - positive = rising, negative = falling\n")
+
+for i, detail_data in enumerate(details[:4]):
+    freq_name = ['Finest Details (Hours)', 'Medium Details', 'Coarse Details', 'Coarsest Details'][i]
+    plot_ascii(detail_data[:150], height=8, width=70, 
+               title=f"Level {i+1} Detail - {freq_name}")
 
 # =============================================================================
 # STEP 10: TRADING SIGNAL GENERATION
