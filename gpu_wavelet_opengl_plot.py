@@ -750,7 +750,7 @@ print("✓")
 # CLEANUP
 # =============================================================================
 
-if OPENGL_AVAILABLE and ctx_initialized:
+if OPENGL_AVAILABLE and ctx_initialized and glfw is not None:
     try:
         # Ensure all GL operations complete before cleanup
         if use_gpu:
@@ -779,8 +779,8 @@ print(f"  2. 02_progressive_approximations.png - Multi-level filtering")
 print(f"  3. 03_frequency_bands.png        - Detail coefficients")
 print(f"  4. 04_anomaly_detection.png      - Anomaly analysis")
 print(f"  5. 05_trading_signals.png        - Buy/sell signals")
-print(f"\nProcessing Mode: {'GPU (OpenGL Compute)' if use_gpu else 'CPU (NumPy fallback)'}")
+print(f"\nProcessing Mode: {'GPU (OpenGL Compute)' if use_gpu else 'CPU (NumPy)'}")
 print(f"Processing Time: {compute_time*1000:.2f}ms")
-if use_gpu:
-    print(f"GPU: {renderer if 'renderer' in dir() else 'Unknown'}")
+if use_gpu and 'renderer' in dir():
+    print(f"GPU: {renderer}")
 print("=" * 70)

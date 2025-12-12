@@ -208,4 +208,4 @@ __marimo__/
 wavelet_plots
 wavelet_plots_cuda
 scaler.pth
-lstm_model.pth
+lstm_model.pth*.png
