@@ -20,12 +20,22 @@ import numpy as np
 import time
 import os
 from datetime import datetime, timedelta
-import ccxt
+
+# Set matplotlib backend before any other matplotlib imports
 import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from matplotlib.gridspec import GridSpec
+matplotlib.use('Agg')  # Non-interactive backend, safer for headless systems
+
+import ccxt
+
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    from matplotlib.gridspec import GridSpec
+    MATPLOTLIB_AVAILABLE = True
+except Exception as e:
+    print(f"⚠ Matplotlib import error: {e}")
+    print("  Plots will not be generated")
+    MATPLOTLIB_AVAILABLE = False
 
 # Create output directory
 output_dir = 'wavelet_plots_cpu'
@@ -35,7 +45,11 @@ print("=" * 70)
 print("WAVELET DECOMPOSITION - CPU MODE (NumPy)")
 print("=" * 70)
 print(f"\n  Pure CPU implementation (no OpenGL/GPU dependencies)")
-print(f"  Output Directory: {output_dir}/\n")
+if MATPLOTLIB_AVAILABLE:
+    print(f"  Output Directory: {output_dir}/")
+else:
+    print(f"  ⚠ Matplotlib unavailable - plots disabled")
+print()
 
 # =============================================================================
 # DEFINE WAVELETS
