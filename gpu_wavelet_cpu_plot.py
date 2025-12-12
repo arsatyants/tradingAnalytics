@@ -190,14 +190,28 @@ threshold = 3.0
 anomaly_threshold = median + threshold * mad
 anomaly_indices = np.where(detail_abs > anomaly_threshold)[0]
 
-if not MATPLOTLIB_AVAILABLE:
+if SKIP_PLOTS:
     print("\n" + "=" * 70)
-    print("SKIPPING PLOTS (matplotlib unavailable)")
+    print("SKIPPING PLOTS (--no-plots mode)")
     print("=" * 70)
     print("\n✓ Wavelet decomposition completed successfully")
     print(f"  Processing Time: {compute_time*1000:.2f}ms")
+    print(f"\n  Trend points: {len(trend_gpu)}")
+    print(f"  Detail points: {len(detail_gpu)}")
+    print(f"  Anomalies detected: {len(anomaly_indices)}")
     print("=" * 70)
     exit(0)
+
+# Initialize matplotlib (may fail on Pi Zero)
+if not init_matplotlib():
+    print("\n" + "=" * 70)
+    print("MATPLOTLIB FAILED - Cannot generate plots")
+    print("=" * 70)
+    print("\n✓ Wavelet decomposition completed successfully")
+    print(f"  Processing Time: {compute_time*1000:.2f}ms")
+    print("\nTip: Run with --no-plots to skip visualization")
+    print("=" * 70)
+    exit(1)
 
 print("=" * 70)
 print("GENERATING PLOTS")
