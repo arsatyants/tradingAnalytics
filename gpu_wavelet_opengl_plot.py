@@ -29,16 +29,54 @@ import time
 import os
 from datetime import datetime, timedelta
 
-# Try to import OpenGL components
+# =============================================================================
+# EARLY DETECTION: Skip OpenGL on unsupported hardware
+# =============================================================================
+
+def is_low_end_pi():
+    """Detect Raspberry Pi Zero/older models BEFORE importing OpenGL."""
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read().lower()
+            if any(x in model for x in ['zero', 'pi 1', 'pi 2', 'pi 3', 'model a', 'model b']):
+                if 'pi 4' not in model and 'pi 5' not in model:
+                    return True
+    except:
+        pass
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.read().lower()
+            # BCM2835/2836/2837 = VideoCore IV (no compute shaders, causes bus errors)
+            if any(x in cpuinfo for x in ['bcm2835', 'bcm2836', 'bcm2837']):
+                return True
+    except:
+        pass
+    return False
+
+# Check environment variable to force CPU mode
+FORCE_CPU = os.environ.get('WAVELET_FORCE_CPU', '').lower() in ('1', 'true', 'yes')
+
+# Skip OpenGL entirely on low-end Pi to avoid bus errors during import
+SKIP_OPENGL = FORCE_CPU or is_low_end_pi()
+
+if SKIP_OPENGL and not FORCE_CPU:
+    print("⚠ Raspberry Pi Zero/older model detected - skipping OpenGL to avoid bus errors")
+
+# Try to import OpenGL components only if not skipped
 OPENGL_AVAILABLE = False
-try:
-    import glfw
-    from OpenGL.GL import *
-    from OpenGL.GL import shaders
-    OPENGL_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠ OpenGL not available: {e}")
-    print("  Install with: pip install PyOpenGL PyOpenGL_accelerate glfw")
+if not SKIP_OPENGL:
+    try:
+        import glfw
+        from OpenGL.GL import *
+        from OpenGL.GL import shaders
+        OPENGL_AVAILABLE = True
+    except ImportError as e:
+        print(f"⚠ OpenGL not available: {e}")
+        print("  Install with: pip install PyOpenGL PyOpenGL_accelerate glfw")
+    except Exception as e:
+        print(f"⚠ OpenGL import failed: {e}")
+else:
+    print("  Using CPU-only mode (NumPy convolution)")
 
 import ccxt
 import matplotlib.pyplot as plt
@@ -60,34 +98,6 @@ print("=" * 70)
 ctx_initialized = False
 use_gpu = False
 window = None
-
-def is_raspberry_pi_zero():
-    """Detect if running on Raspberry Pi Zero (VideoCore IV - no compute support)."""
-    try:
-        with open('/proc/device-tree/model', 'r') as f:
-            model = f.read().lower()
-            return 'zero' in model or 'pi 1' in model or 'pi 2' in model or 'pi 3' in model
-    except:
-        pass
-    try:
-        with open('/proc/cpuinfo', 'r') as f:
-            cpuinfo = f.read().lower()
-            # BCM2835 is VideoCore IV (Pi Zero, Pi 1)
-            # BCM2836/BCM2837 is also VideoCore IV (Pi 2, Pi 3)
-            if 'bcm2835' in cpuinfo or 'bcm2836' in cpuinfo or 'bcm2837' in cpuinfo:
-                return True
-    except:
-        pass
-    return False
-
-if OPENGL_AVAILABLE:
-    # Skip OpenGL entirely on Pi Zero/older models - they don't support compute shaders
-    # and attempting to create contexts can cause bus errors
-    if is_raspberry_pi_zero():
-        print(f"\n⚠ Raspberry Pi Zero/older model detected (VideoCore IV)")
-        print(f"  VideoCore IV only supports OpenGL ES 2.0 - no compute shaders")
-        print(f"  Using CPU fallback to avoid bus errors")
-        OPENGL_AVAILABLE = False
 
 if OPENGL_AVAILABLE:
     try:
