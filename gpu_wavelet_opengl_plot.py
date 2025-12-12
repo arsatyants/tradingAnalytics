@@ -703,8 +703,15 @@ print("✓")
 
 if OPENGL_AVAILABLE and ctx_initialized:
     try:
+        # Ensure all GL operations complete before cleanup
+        if use_gpu:
+            try:
+                glFinish()  # Wait for all GL commands to complete
+            except:
+                pass
         glfw.terminate()
-    except:
+    except Exception as e:
+        # Silently handle cleanup errors to avoid bus errors on exit
         pass
 
 # =============================================================================
