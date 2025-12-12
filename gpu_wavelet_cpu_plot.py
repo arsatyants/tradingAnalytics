@@ -1,279 +1,44 @@
 """
-GPU-Accelerated Wavelet Decomposition with OpenGL Compute Shaders
-=================================================================
+CPU-Only Wavelet Decomposition (No OpenGL Dependencies)
+========================================================
 
-This script uses OpenGL compute shaders for GPU acceleration, specifically
-designed for Raspberry Pi 5's VideoCore VII GPU.
+Pure NumPy implementation for Raspberry Pi Zero and systems without GPU support.
+No OpenGL/GLFW imports - guaranteed to work on any system with numpy.
+
+Usage:
+    python gpu_wavelet_cpu_plot.py
 
 Features:
-- OpenGL 4.3+ / OpenGL ES 3.1+ compute shader support
+- Pure NumPy convolution (no GPU dependencies)
 - High-resolution plots (300 DPI)
-- Multiple subplots for comprehensive analysis
 - Real BTC data from Binance
-- Saves all plots to 'wavelet_plots_opengl/' directory
-
-Raspberry Pi 5 Support:
-- VideoCore VII GPU supports OpenGL ES 3.1 compute shaders
-- Uses Mesa drivers with V3D backend
-- Requires: sudo apt install python3-opengl libglfw3 libglfw3-dev
-
-For Raspberry Pi Zero/older models without GPU support:
-- Use gpu_wavelet_cpu_plot.py instead (pure NumPy, no GPU dependencies)
-
-Installation:
-    pip install PyOpenGL PyOpenGL_accelerate glfw numpy ccxt matplotlib
-    # On Raspberry Pi OS:
-    sudo apt install libglfw3 libglfw3-dev mesa-utils
+- Works on Raspberry Pi Zero, Pi 1, 2, 3
+- Saves plots to 'wavelet_plots_cpu/' directory
 """
 
 import numpy as np
 import time
 import os
 from datetime import datetime, timedelta
-
-# Try to import OpenGL components
-try:
-    import glfw
-    from OpenGL.GL import *
-    from OpenGL.GL import shaders
-    OPENGL_AVAILABLE = True
-except ImportError as e:
-    print("=" * 70)
-    print("ERROR: OpenGL dependencies not available")
-    print("=" * 70)
-    print(f"\n{e}\n")
-    print("For Raspberry Pi Zero or systems without OpenGL:")
-    print("  → Use: python gpu_wavelet_cpu_plot.py\n")
-    print("To install OpenGL dependencies:")
-    print("  pip install PyOpenGL PyOpenGL_accelerate glfw")
-    print("  sudo apt install libglfw3 libglfw3-dev mesa-utils")
-    print("=" * 70)
-    exit(1)
-
 import ccxt
 import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend for headless operation
+matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 
 # Create output directory
-output_dir = 'wavelet_plots_opengl'
+output_dir = 'wavelet_plots_cpu'
 os.makedirs(output_dir, exist_ok=True)
 
 print("=" * 70)
-print("GPU-ACCELERATED WAVELET DECOMPOSITION - OPENGL MODE")
+print("WAVELET DECOMPOSITION - CPU MODE (NumPy)")
 print("=" * 70)
-
-# =============================================================================
-# STEP 1: INITIALIZE OPENGL CONTEXT
-# =============================================================================
-
-ctx_initialized = False
-use_gpu = False
-window = None
-
-# Initialize OpenGL
-try:
-    # Initialize GLFW
-    if not glfw.init():
-        raise RuntimeError("Failed to initialize GLFW")
-        
-        # Request OpenGL 4.3 core profile (for compute shaders)
-        # Fall back to OpenGL ES 3.1 on embedded devices (Raspberry Pi)
-        glfw.window_hint(glfw.VISIBLE, glfw.FALSE)  # Headless context
-        glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 4)
-        glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
-        glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-        
-        # Try to create window with OpenGL 4.3
-        window = glfw.create_window(1, 1, "Compute", None, None)
-        
-        if not window:
-            # Fall back to default context (for OpenGL ES on RPi)
-            glfw.default_window_hints()
-            glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
-            glfw.window_hint(glfw.CLIENT_API, glfw.OPENGL_ES_API)
-            glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
-            glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
-            window = glfw.create_window(1, 1, "Compute", None, None)
-        
-        if not window:
-            # Last resort: any available context
-            glfw.default_window_hints()
-            glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
-            window = glfw.create_window(1, 1, "Compute", None, None)
-        
-        if window:
-            glfw.make_context_current(window)
-            
-            # Get OpenGL info
-            vendor = glGetString(GL_VENDOR)
-            renderer = glGetString(GL_RENDERER)
-            version = glGetString(GL_VERSION)
-            
-            if vendor:
-                vendor = vendor.decode('utf-8')
-            if renderer:
-                renderer = renderer.decode('utf-8')
-            if version:
-                version = version.decode('utf-8')
-            
-            print(f"\n✓ OpenGL Initialized")
-            print(f"  Vendor:   {vendor}")
-            print(f"  Renderer: {renderer}")
-            print(f"  Version:  {version}")
-            
-            # Check for compute shader support
-            major_version = glGetIntegerv(GL_MAJOR_VERSION)
-            minor_version = glGetIntegerv(GL_MINOR_VERSION)
-            
-            # Compute shaders require OpenGL 4.3+ or OpenGL ES 3.1+
-            has_compute = (major_version > 4) or (major_version == 4 and minor_version >= 3)
-            
-            # Check for compute shader extension as fallback
-            if not has_compute:
-                extensions = glGetString(GL_EXTENSIONS)
-                if extensions:
-                    extensions = extensions.decode('utf-8')
-                    has_compute = 'GL_ARB_compute_shader' in extensions or 'compute_shader' in extensions.lower()
-            
-            if has_compute:
-                print(f"  Compute Shaders: ✓ Supported")
-                
-                # Get compute shader limits
-                try:
-                    max_work_group_count = [
-                        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, i)[0] for i in range(3)
-                    ]
-                    max_work_group_size = [
-                        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, i)[0] for i in range(3)
-                    ]
-                    max_work_group_invocations = glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS)
-                    
-                    print(f"  Max Work Group Count: {max_work_group_count}")
-                    print(f"  Max Work Group Size:  {max_work_group_size}")
-                    print(f"  Max Invocations:      {max_work_group_invocations}")
-                except:
-                    print(f"  (Could not query compute limits)")
-                
-                ctx_initialized = True
-                use_gpu = True
-            else:
-                print(f"  Compute Shaders: ✗ Not supported (need OpenGL 4.3+ or ES 3.1+)")
-                print(f"\n  → Use gpu_wavelet_cpu_plot.py for CPU-only processing")
-                exit(1)
-        else:
-            print(f"\n⚠ Could not create OpenGL context")
-            print(f"  → Use gpu_wavelet_cpu_plot.py for CPU-only processing")
-            exit(1)
-            
-except Exception as e:
-    print(f"\n⚠ OpenGL initialization failed: {e}")
-    print(f"  → Use gpu_wavelet_cpu_plot.py for CPU-only processing")
-    exit(1)
-
+print(f"\n  Pure CPU implementation (no OpenGL/GPU dependencies)")
 print(f"  Output Directory: {output_dir}/\n")
 
 # =============================================================================
-# STEP 2: DEFINE COMPUTE SHADER
-# =============================================================================
-
-CONVOLUTION_SHADER = """
-#version 430 core
-
-layout(local_size_x = 256) in;
-
-layout(std430, binding = 0) buffer SignalBuffer {
-    float signal[];
-};
-
-layout(std430, binding = 1) buffer FilterBuffer {
-    float filter_coeffs[];
-};
-
-layout(std430, binding = 2) buffer OutputBuffer {
-    float output_data[];
-};
-
-uniform int signal_length;
-uniform int filter_length;
-
-void main() {
-    uint i = gl_GlobalInvocationID.x;
-    
-    // Bounds check
-    if (i >= signal_length - filter_length + 1) {
-        return;
-    }
-    
-    // Convolution: sum of element-wise multiplication
-    float sum = 0.0;
-    for (int j = 0; j < filter_length; j++) {
-        sum += signal[i + j] * filter_coeffs[j];
-    }
-    
-    output_data[i] = sum;
-}
-"""
-
-# OpenGL ES 3.1 version for Raspberry Pi
-CONVOLUTION_SHADER_ES = """
-#version 310 es
-
-layout(local_size_x = 64) in;
-
-layout(std430, binding = 0) buffer SignalBuffer {
-    highp float signal[];
-};
-
-layout(std430, binding = 1) buffer FilterBuffer {
-    highp float filter_coeffs[];
-};
-
-layout(std430, binding = 2) buffer OutputBuffer {
-    highp float output_data[];
-};
-
-uniform int signal_length;
-uniform int filter_length;
-
-void main() {
-    uint i = gl_GlobalInvocationID.x;
-    
-    if (i >= uint(signal_length - filter_length + 1)) {
-        return;
-    }
-    
-    highp float sum = 0.0;
-    for (int j = 0; j < filter_length; j++) {
-        sum += signal[i + uint(j)] * filter_coeffs[j];
-    }
-    
-    output_data[i] = sum;
-}
-"""
-
-# Compile compute shader
-compute_program = None
-try:
-    # Try desktop OpenGL shader first
-    try:
-        compute_shader = shaders.compileShader(CONVOLUTION_SHADER, GL_COMPUTE_SHADER)
-        compute_program = shaders.compileProgram(compute_shader)
-        print("✓ Compute shader compiled (OpenGL 4.3)\n")
-    except:
-        # Fall back to OpenGL ES shader
-        compute_shader = shaders.compileShader(CONVOLUTION_SHADER_ES, GL_COMPUTE_SHADER)
-        compute_program = shaders.compileProgram(compute_shader)
-        print("✓ Compute shader compiled (OpenGL ES 3.1)\n")
-except Exception as e:
-    print(f"✗ Shader compilation failed: {e}")
-    print(f"  → Use gpu_wavelet_cpu_plot.py for CPU-only processing")
-    exit(1)
-
-# =============================================================================
-# STEP 3: DEFINE WAVELETS
+# DEFINE WAVELETS
 # =============================================================================
 
 # Normalized wavelets (sum to 1.0 for price preservation)
@@ -289,76 +54,15 @@ db4_low_pass = db4_low_pass / db4_sum
 print("✓ Wavelets loaded (Haar and DB4)\n")
 
 # =============================================================================
-# STEP 4: GPU CONVOLUTION FUNCTION
+# CPU CONVOLUTION FUNCTION
 # =============================================================================
 
-def gpu_convolve_opengl(signal, filter_coeffs):
-    """
-    Perform 1D convolution using OpenGL compute shaders.
-    
-    Args:
-        signal: Input signal (numpy float32 array)
-        filter_coeffs: Filter coefficients (numpy float32 array)
-    
-    Returns:
-        Convolved output (numpy float32 array)
-    """
-    sig_len = len(signal)
-    filt_len = len(filter_coeffs)
-    output_len = sig_len - filt_len + 1
-    
-    # Ensure float32
-    signal = np.asarray(signal, dtype=np.float32)
-    filter_coeffs = np.asarray(filter_coeffs, dtype=np.float32)
-    output = np.zeros(output_len, dtype=np.float32)
-    
-    # Create SSBOs (Shader Storage Buffer Objects)
-    signal_ssbo = glGenBuffers(1)
-    filter_ssbo = glGenBuffers(1)
-    output_ssbo = glGenBuffers(1)
-    
-    # Upload signal data
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, signal_ssbo)
-    glBufferData(GL_SHADER_STORAGE_BUFFER, signal.nbytes, signal, GL_STATIC_DRAW)
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, signal_ssbo)
-    
-    # Upload filter data
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, filter_ssbo)
-    glBufferData(GL_SHADER_STORAGE_BUFFER, filter_coeffs.nbytes, filter_coeffs, GL_STATIC_DRAW)
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, filter_ssbo)
-    
-    # Allocate output buffer
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, output_ssbo)
-    glBufferData(GL_SHADER_STORAGE_BUFFER, output.nbytes, None, GL_DYNAMIC_READ)
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, output_ssbo)
-    
-    # Use compute program
-    glUseProgram(compute_program)
-    
-    # Set uniforms
-    glUniform1i(glGetUniformLocation(compute_program, "signal_length"), sig_len)
-    glUniform1i(glGetUniformLocation(compute_program, "filter_length"), filt_len)
-    
-    # Dispatch compute shader
-    # Work group size is 256 (or 64 for ES), so we need ceil(output_len / 256) groups
-    work_group_size = 256  # Match local_size_x in shader
-    num_groups = (output_len + work_group_size - 1) // work_group_size
-    glDispatchCompute(num_groups, 1, 1)
-    
-    # Memory barrier to ensure compute shader completes
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT)
-    
-    # Read back results
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, output_ssbo)
-    glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, output.nbytes, output)
-    
-    # Cleanup
-    glDeleteBuffers(3, [signal_ssbo, filter_ssbo, output_ssbo])
-    
-    return output
+def cpu_convolve(signal, filter_coeffs):
+    """Pure NumPy convolution."""
+    return np.convolve(signal, filter_coeffs, mode='valid').astype(np.float32)
 
 # =============================================================================
-# STEP 5: FETCH REAL BTC DATA
+# FETCH REAL BTC DATA
 # =============================================================================
 
 print("=" * 70)
@@ -407,7 +111,7 @@ except Exception as e:
     print(f"  Generated {n_points} synthetic price points\n")
 
 # =============================================================================
-# STEP 6: PERFORM WAVELET DECOMPOSITION
+# PERFORM WAVELET DECOMPOSITION
 # =============================================================================
 
 print("=" * 70)
@@ -415,12 +119,12 @@ print("COMPUTING WAVELET DECOMPOSITION")
 print("=" * 70)
 
 start = time.time()
-trend_gpu = gpu_convolve_opengl(prices, haar_low_pass)
-detail_gpu = gpu_convolve_opengl(prices, haar_high_pass)
-trend_db4 = gpu_convolve_opengl(prices, db4_low_pass)
+trend_gpu = cpu_convolve(prices, haar_low_pass)
+detail_gpu = cpu_convolve(prices, haar_high_pass)
+trend_db4 = cpu_convolve(prices, db4_low_pass)
 compute_time = time.time() - start
 
-print(f"\n✓ Decomposition complete (GPU/OpenGL): {compute_time*1000:.2f}ms")
+print(f"\n✓ Decomposition complete (CPU/NumPy): {compute_time*1000:.2f}ms")
 print(f"  Trend points: {len(trend_gpu)}")
 print(f"  Detail points: {len(detail_gpu)}\n")
 
@@ -430,8 +134,8 @@ details = []
 current_signal = prices
 
 for i in range(5):
-    approx = gpu_convolve_opengl(current_signal, haar_low_pass)
-    detail = gpu_convolve_opengl(current_signal, haar_high_pass)
+    approx = cpu_convolve(current_signal, haar_low_pass)
+    detail = cpu_convolve(current_signal, haar_high_pass)
     approximations.append(approx)
     details.append(detail)
     current_signal = approx
@@ -439,7 +143,7 @@ for i in range(5):
 levels = approximations
 
 # =============================================================================
-# STEP 7: ANOMALY DETECTION
+# ANOMALY DETECTION
 # =============================================================================
 
 detail_abs = np.abs(detail_gpu)
@@ -523,7 +227,7 @@ print("[2/5] Progressive approximations... ", end='', flush=True)
 
 fig = plt.figure(figsize=(20, 16), dpi=300)
 gs = GridSpec(6, 1, figure=fig, hspace=0.35)
-fig.suptitle('Progressive Approximations - Frequency Filtering (OpenGL Compute)', fontsize=18, fontweight='bold')
+fig.suptitle('Progressive Approximations - CPU Mode', fontsize=18, fontweight='bold')
 
 ax_orig = plt.subplot(gs[0])
 ax_orig.plot(dates, prices, 'b-', linewidth=1.5, alpha=0.8, label='Original')
@@ -534,7 +238,7 @@ ax_orig.legend(loc='upper left')
 ax_orig.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
 colors = ['orangered', 'orange', 'gold', 'limegreen', 'dodgerblue']
-labels = ['Level 1 (10min)', 'Level 2 (20min)', 'Level 3 (40min)', 'Level 4 (80min)', 'Level 5 (160min)']
+labels = ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5']
 
 for i in range(5):
     ax = plt.subplot(gs[i+1])
@@ -553,14 +257,14 @@ plt.close()
 print("✓")
 
 # =============================================================================
-# PLOT 3: FREQUENCY BANDS (DETAILS)
+# PLOT 3: FREQUENCY BANDS
 # =============================================================================
 
 print("[3/5] Frequency bands... ", end='', flush=True)
 
 fig = plt.figure(figsize=(20, 16), dpi=300)
 gs = GridSpec(6, 1, figure=fig, hspace=0.35)
-fig.suptitle('Frequency Band Decomposition - Detail Coefficients', fontsize=18, fontweight='bold')
+fig.suptitle('Frequency Band Decomposition', fontsize=18, fontweight='bold')
 
 ax_orig = plt.subplot(gs[0])
 ax_orig.plot(dates, prices, 'b-', linewidth=1.5, alpha=0.8)
@@ -595,7 +299,7 @@ print("✓")
 print("[4/5] Anomaly detection... ", end='', flush=True)
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), dpi=300)
-fig.suptitle('Anomaly Detection Analysis (OpenGL Compute)', fontsize=16, fontweight='bold')
+fig.suptitle('Anomaly Detection Analysis (CPU)', fontsize=16, fontweight='bold')
 
 ax1.plot(aligned_dates, detail_gpu, 'b-', linewidth=1, alpha=0.7, label='Detail Coefficients')
 ax1.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
@@ -620,7 +324,7 @@ ax2.axhline(y=anomaly_threshold, color='r', linestyle='--', linewidth=1.5)
 ax2.fill_between(aligned_dates, 0, anomaly_threshold, alpha=0.2, color='green', label='Normal Range')
 ax2.fill_between(aligned_dates, anomaly_threshold, detail_abs.max(), alpha=0.2, color='red', label='Anomaly Zone')
 
-ax2.set_title('Volatility Measure (Absolute Detail)', fontsize=13)
+ax2.set_title('Volatility Measure', fontsize=13)
 ax2.set_ylabel('Absolute Detail (USD)', fontsize=11)
 ax2.set_xlabel('Date', fontsize=11)
 ax2.grid(True, alpha=0.3)
@@ -649,7 +353,7 @@ buy_signals = price_deviation < -buffer
 sell_signals = price_deviation > buffer
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), dpi=300)
-fig.suptitle('Trading Signal Generation (OpenGL Compute)', fontsize=16, fontweight='bold')
+fig.suptitle('Trading Signal Generation (CPU)', fontsize=16, fontweight='bold')
 
 ax1.plot(signal_dates, aligned_prices, 'b-', linewidth=1.5, alpha=0.7, label='Price')
 ax1.plot(signal_dates, trend, 'orange', linewidth=2, label='Trend (Level 3)')
@@ -690,19 +394,6 @@ plt.close()
 print("✓")
 
 # =============================================================================
-# CLEANUP
-# =============================================================================
-
-try:
-    # Ensure all GL operations complete before cleanup
-    glFinish()
-    if window:
-        glfw.destroy_window(window)
-    glfw.terminate()
-except:
-    pass  # Silently handle cleanup errors
-
-# =============================================================================
 # SUMMARY
 # =============================================================================
 
@@ -716,8 +407,6 @@ print(f"  2. 02_progressive_approximations.png - Multi-level filtering")
 print(f"  3. 03_frequency_bands.png        - Detail coefficients")
 print(f"  4. 04_anomaly_detection.png      - Anomaly analysis")
 print(f"  5. 05_trading_signals.png        - Buy/sell signals")
-print(f"\nProcessing Mode: GPU (OpenGL Compute)")
+print(f"\nProcessing Mode: CPU (NumPy)")
 print(f"Processing Time: {compute_time*1000:.2f}ms")
-if 'renderer' in dir():
-    print(f"GPU: {renderer}")
 print("=" * 70)

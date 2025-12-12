@@ -210,6 +210,7 @@ __marimo__/
 wavelet_plots/
 wavelet_plots_cuda/
 wavelet_plots_opengl/
+wavelet_plots_cpu/
 
 # Model files
 scaler.pth
