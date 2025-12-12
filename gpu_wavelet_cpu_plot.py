@@ -371,16 +371,21 @@ ax2.grid(True, alpha=0.3)
 ax2.legend(loc='upper left', fontsize=10)
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-plt.subplots_adjust(hspace=0.3)
-plt.savefig(f'{output_dir}/04_anomaly_detection.png', dpi=300, bbox_inches='tight')
-plt.close()
-print("✓")
+    plt.subplots_adjust(hspace=0.3)
+    plt.savefig(f'{output_dir}/04_anomaly_detection.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print("✓")
+except Exception as e:
+    print(f"✗ Error: {e}")
+    exit(1)
 
 # =============================================================================
 # PLOT 5: TRADING SIGNALS
 # =============================================================================
 
 print("[5/5] Trading signals... ", end='', flush=True)
+
+try:
 
 trend = levels[2]
 offset = len(prices) - len(trend)
