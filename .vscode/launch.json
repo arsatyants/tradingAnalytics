@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "GPU Wavelet (OpenCL)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/gpu_wavelet_gpu_plot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "GPU Wavelet (CUDA)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/gpu_wavelet_cuda_plot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        }
+    ]
+}
