@@ -1,0 +1,38 @@
+# Trading Analytics Dependencies
+# Core cryptocurrency data and analysis libraries
+ccxt>=4.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Deep Learning (PyTorch with CUDA support)
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Machine Learning utilities
+scikit-learn>=1.3.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+mplfinance>=0.12.0
+
+# Technical Analysis
+ta>=0.11.0
+
+# Signal Processing
+pywavelets>=1.4.0
+scipy>=1.11.0
+statsmodels>=0.14.0
+ssqueezepy>=0.6.0
+
+# Jupyter Environment
+jupyterlab>=4.0.0
+ipython>=8.0.0
+
+# ONNX (model export)
+onnx>=1.14.0
+onnxscript>=0.1.0
+
+# GPU Acceleration (optional - for GPU wavelet scripts)
+pyopencl>=2023.1.0

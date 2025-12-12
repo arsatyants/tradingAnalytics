@@ -38,17 +38,15 @@ cd tradingAnalytics
 
 2. **Install dependencies**
 
-Open `env.ipynb` and uncomment the installation commands you need, or install via pip:
-
 ```bash
-# Core dependencies
-pip install ccxt pandas torch numpy scikit-learn matplotlib seaborn \
-            mplfinance ta pywavelets scipy statsmodels jupyterlab \
-            onnx onnxscript ssqueezepy
+# Install all required packages
+pip install -r requirements.txt
 
 # For GPU-accelerated wavelet scripts (optional)
 pip install pyopencl  # For OpenCL (multi-platform GPU support)
 ```
+
+Alternatively, open `env.ipynb` and uncomment the installation commands you need.
 
 For OpenCL on Linux systems, you may also need:
 ```bash
