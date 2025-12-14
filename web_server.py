@@ -482,8 +482,8 @@ class WaveletHandler(BaseHTTPRequestHandler):
         
         <div class="frequency-bands" id="frequency-bands" style="display: none;">
             <h2>📊 Frequency Band Analysis (8 Levels)</h2>
-            <p style="text-align: center; color: #6c757d; margin-bottom: 20px;">
-                Based on <strong>5-minute</strong> candle data (1000 samples = ~3.5 days of data)
+            <p id="frequency-bands-info" style="text-align: center; color: #6c757d; margin-bottom: 20px;">
+                Based on <strong id="timeframe-display">5-minute</strong> candle data (1000 samples)
             </p>
             <div class="bands-grid">
                 <div class="band-card">
@@ -745,7 +745,7 @@ class WaveletHandler(BaseHTTPRequestHandler):
                     console.log('Frequency bands:', result.metrics.frequency_bands);
                     displayMetrics(result.metrics, selectedCurrency);
                     displayPlots(result.plots, selectedCurrency);
-                    displayFrequencyBands(result.metrics.frequency_bands || []);
+                    displayFrequencyBands(result.metrics.frequency_bands || [], selectedTimeframe);
                 } else {
                     throw new Error(result.error || 'Analysis failed');
                 }
@@ -810,13 +810,25 @@ class WaveletHandler(BaseHTTPRequestHandler):
         }
         
         // Display frequency bands
-        function displayFrequencyBands(bands) {
+        function displayFrequencyBands(bands, timeframe) {
             const container = document.getElementById('frequency-bands');
             
             if (!bands || bands.length === 0) {
                 container.style.display = 'none';
                 return;
             }
+            
+            // Update timeframe display
+            const timeframeNames = {
+                '1m': '1-minute',
+                '5m': '5-minute',
+                '15m': '15-minute',
+                '30m': '30-minute',
+                '1h': '1-hour',
+                '4h': '4-hour',
+                '1d': '1-day'
+            };
+            document.getElementById('timeframe-display').textContent = timeframeNames[timeframe] || timeframe;
             
             const bandsGrid = container.querySelector('.bands-grid');
             const bandDescriptions = [

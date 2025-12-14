@@ -48,6 +48,42 @@ from datetime import datetime, timedelta
 from scipy.interpolate import interp1d
 import sys
 
+# Helper function to convert timeframe to minutes
+def timeframe_to_minutes(tf_string):
+    """Convert timeframe string to minutes"""
+    if tf_string.endswith('m'):
+        return int(tf_string[:-1])
+    elif tf_string.endswith('h'):
+        return int(tf_string[:-1]) * 60
+    elif tf_string.endswith('d'):
+        return int(tf_string[:-1]) * 1440
+    else:
+        return 60  # Default to 1 hour
+
+# Helper function for safe interpolation
+def safe_interpolate(source_data, target_length):
+    """
+    Safely interpolate data to target length, automatically choosing 
+    appropriate method based on data points available.
+    """
+    if len(source_data) < 2:
+        # Not enough points, return constant
+        return np.full(target_length, source_data[0] if len(source_data) > 0 else 0)
+    
+    source_indices = np.linspace(0, target_length - 1, len(source_data))
+    target_indices = np.arange(target_length)
+    
+    # Choose interpolation method based on available points
+    if len(source_data) < 4:
+        # Linear interpolation for very few points
+        kind = 'linear'
+    else:
+        # Cubic interpolation when we have enough points
+        kind = 'cubic'
+    
+    interp_func = interp1d(source_indices, source_data, kind=kind, fill_value='extrapolate')
+    return interp_func(target_indices)
+
 # =============================================================================
 # PARSE COMMAND-LINE ARGUMENTS
 # =============================================================================
@@ -57,16 +93,27 @@ if len(sys.argv) > 1:
 else:
     CURRENCY = 'BTC'  # Default currency
 
+if len(sys.argv) > 2:
+    TIMEFRAME = sys.argv[2].lower()
+else:
+    TIMEFRAME = '1h'  # Default timeframe
+
 # Validate currency
 if CURRENCY not in ['BTC', 'ETH', 'SOL']:
     print(f"Error: Unsupported currency '{CURRENCY}'. Use: BTC, ETH, or SOL")
+    exit(1)
+
+# Validate timeframe
+valid_timeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
+if TIMEFRAME not in valid_timeframes:
+    print(f"Error: Unsupported timeframe '{TIMEFRAME}'. Use: {', '.join(valid_timeframes)}")
     exit(1)
 
 # =============================================================================
 # STEP 1: INITIALIZE OPENCL
 # =============================================================================
 print("=" * 70)
-print(f"GPU WAVELET DECOMPOSITION - {CURRENCY}/USDT")
+print(f"GPU WAVELET DECOMPOSITION - {CURRENCY}/USDT ({TIMEFRAME})")
 print("=" * 70)
 
 # Auto-detect best OpenCL platform and device
@@ -395,7 +442,8 @@ try:
     
     # Set timeframe and date range
     symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
-    timeframe = '1h'  # 1-hour candles
+    timeframe = TIMEFRAME
+    timeframe_minutes = timeframe_to_minutes(timeframe)
     limit = 1000  # Fetch 1000 candles
     
     print(f"\nFetching data for {len(symbols)} cryptocurrencies:")
@@ -1020,18 +1068,17 @@ for i, detail_data in enumerate(details[:min(8, len(details))]):
     # Find maxima (peaks in positive signal)
     maxima_indices, _ = find_peaks(detail_data)
     
-    # Calculate average periods
+    # Calculate average periods (accounting for downsampling and timeframe)
+    downsample_factor = 2 ** (i + 1)
     if len(minima_indices) > 1:
         min_periods = np.diff(minima_indices)
-        avg_min_period = min_periods.mean()
-        avg_min_period_hours = avg_min_period * (2 ** (i + 1))  # Account for downsampling
+        avg_min_period_hours = (min_periods.mean() * downsample_factor * timeframe_minutes) / 60.0
     else:
         avg_min_period_hours = 0
     
     if len(maxima_indices) > 1:
         max_periods = np.diff(maxima_indices)
-        avg_max_period = max_periods.mean()
-        avg_max_period_hours = avg_max_period * (2 ** (i + 1))  # Account for downsampling
+        avg_max_period_hours = (max_periods.mean() * downsample_factor * timeframe_minutes) / 60.0
     else:
         avg_max_period_hours = 0
     
@@ -1047,10 +1094,7 @@ for i, detail_data in enumerate(details[:min(8, len(details))]):
     display_length = min(150, len(prices))
     if len(detail_data) < display_length:
         # Interpolate upsampled data
-        detail_indices = np.linspace(0, display_length-1, len(detail_data))
-        original_indices = np.arange(display_length)
-        interp_func = interp1d(detail_indices, detail_data, kind='cubic', fill_value='extrapolate')
-        interpolated = interp_func(original_indices)
+        interpolated = safe_interpolate(detail_data, display_length)
     else:
         interpolated = detail_data[:display_length]
     
