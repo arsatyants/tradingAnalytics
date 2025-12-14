@@ -45,6 +45,7 @@ import numpy as np
 import time
 import ccxt
 from datetime import datetime, timedelta
+from scipy.interpolate import interp1d
 
 # =============================================================================
 # STEP 1: INITIALIZE OPENCL
@@ -890,7 +891,7 @@ This creates a hierarchy:
 Used in wave_nada.ipynb for multi-scale trend analysis.
 """
 
-print("\nDecomposing into 5 levels...")
+print("\nDecomposing into 8 levels...")
 print("\nMulti-level wavelet decomposition creates a pyramid:")
 print("  - Each level extracts BOTH approximation (trend) and detail (changes)")
 print("  - Approximation at level N becomes input for level N+1")
@@ -903,7 +904,7 @@ details = []
 
 print("\nUsing PyWavelets-compatible 'symmetric' boundary mode")
 
-for level in range(5):
+for level in range(8):
     # Check if signal is long enough
     if len(current_signal) < len(haar_low_pass):
         print(f"  Level {level+1}: Signal too short, stopping")
@@ -935,11 +936,32 @@ print("=" * 70)
 print("\nShowing APPROXIMATIONS (cumulative smoothing at each scale):")
 print("Each level is smoother because it filters out more high-frequency content\n")
 
-for i, level_data in enumerate(approximations[:4]):
-    freq_name = ['1-2h noise removed', '1-4h noise removed', '1-8h noise removed', '1-16h noise removed'][i]
-    # Pad shorter signals to same length for comparison
-    padded = np.pad(level_data[:150], (0, max(0, 150 - len(level_data))), mode='edge')
-    plot_ascii(padded[:150], height=8, width=70, 
+freq_names = [
+    '1-2h noise removed', 
+    '1-4h noise removed', 
+    '1-8h noise removed', 
+    '1-16h noise removed',
+    '1-32h (1.3 day) noise removed',
+    '1-64h (2.7 day) noise removed',
+    '1-128h (5.3 day) noise removed',
+    '1-256h+ (10+ day) noise removed'
+]
+
+for i, level_data in enumerate(approximations[:min(8, len(approximations))]):
+    freq_name = freq_names[i]
+    
+    # Interpolate to original length (150 points for display)
+    display_length = min(150, len(prices))
+    if len(level_data) < display_length:
+        # Interpolate upsampled data
+        approx_indices = np.linspace(0, display_length-1, len(level_data))
+        original_indices = np.arange(display_length)
+        interp_func = interp1d(approx_indices, level_data, kind='cubic', fill_value='extrapolate')
+        interpolated = interp_func(original_indices)
+    else:
+        interpolated = level_data[:display_length]
+    
+    plot_ascii(interpolated, height=8, width=70, 
                title=f"Level {i+1} Approximation - {freq_name}")
 
 print("\n" + "=" * 70)
@@ -949,22 +971,44 @@ print("\nEach detail band captures a SPECIFIC frequency range:")
 print("Level 1: 1-2 hour oscillations (highest frequency)")
 print("Level 2: 2-4 hour oscillations")
 print("Level 3: 4-8 hour oscillations")
-print("Level 4: 8-16 hour oscillations (lowest frequency)")
+print("Level 4: 8-16 hour oscillations")
+print("Level 5: 16-32 hour oscillations")
+print("Level 6: 32-64 hour oscillations")
+print("Level 7: 64-128 hour oscillations")
+print("Level 8: 128+ hour oscillations (lowest frequency)")
 print("\nThese are INDEPENDENT frequency components that sum to reconstruct the signal\n")
 
-for i, detail_data in enumerate(details[:4]):
-    freq_bands = ['1-2 hours (fastest changes)', '2-4 hours (medium-fast)', 
-                  '4-8 hours (medium-slow)', '8-16 hours (slowest changes)'][i]
+freq_band_names = [
+    '1-2 hours (fastest changes)', 
+    '2-4 hours (very high frequency)', 
+    '4-8 hours (high frequency)', 
+    '8-16 hours (medium-high frequency)',
+    '16-32 hours (medium frequency)',
+    '32-64 hours (medium-low frequency)',
+    '64-128 hours (low frequency)',
+    '128+ hours (lowest frequency)'
+]
+
+for i, detail_data in enumerate(details[:min(8, len(details))]):
+    freq_bands = freq_band_names[i]
     
-    # Calculate statistics to show frequency differences
+    # Calculate statistics on original detail data
     detail_std = detail_data.std()
     detail_mean_abs = np.abs(detail_data).mean()
     zero_crossings = np.sum(np.diff(np.sign(detail_data)) != 0)
     
-    # Pad for consistent length
-    padded = np.pad(detail_data[:150], (0, max(0, 150 - len(detail_data))), mode='constant', constant_values=0)
+    # Interpolate to original length (150 points for display)
+    display_length = min(150, len(prices))
+    if len(detail_data) < display_length:
+        # Interpolate upsampled data
+        detail_indices = np.linspace(0, display_length-1, len(detail_data))
+        original_indices = np.arange(display_length)
+        interp_func = interp1d(detail_indices, detail_data, kind='cubic', fill_value='extrapolate')
+        interpolated = interp_func(original_indices)
+    else:
+        interpolated = detail_data[:display_length]
     
-    plot_ascii(padded[:150], height=8, width=70, 
+    plot_ascii(interpolated, height=8, width=70, 
                title=f"Level {i+1} Detail - {freq_bands}")
     print(f"    Stats: σ=${detail_std:.2f}, Mean|Δ|=${detail_mean_abs:.2f}, "
           f"Zero-crossings={zero_crossings} (higher=more oscillations)\n")
@@ -989,8 +1033,8 @@ TRADING STRATEGY USING WAVELETS:
 This is similar to Bollinger Bands but using wavelet-based trend.
 """
 
-# Get trend (Level 3)
-trend = levels[2]  # Level 3 decomposition
+# Get trend (Level 3 - 4-8 hour timeframe)
+trend = levels[2] if len(levels) > 2 else levels[-1]  # Level 3 decomposition
 
 # Align arrays (trend is shorter due to convolution)
 offset = len(prices) - len(trend)
