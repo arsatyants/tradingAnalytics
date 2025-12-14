@@ -25,15 +25,50 @@ from scipy.interpolate import interp1d
 import os
 import sys
 
+# Helper function for safe interpolation
+def safe_interpolate(source_data, target_length):
+    """
+    Safely interpolate data to target length, automatically choosing 
+    appropriate method based on data points available.
+    """
+    if len(source_data) < 2:
+        # Not enough points, return constant
+        return np.full(target_length, source_data[0] if len(source_data) > 0 else 0)
+    
+    source_indices = np.linspace(0, target_length - 1, len(source_data))
+    target_indices = np.arange(target_length)
+    
+    # Choose interpolation method based on available points
+    if len(source_data) < 4:
+        # Linear interpolation for very few points
+        kind = 'linear'
+    else:
+        # Cubic interpolation when we have enough points
+        kind = 'cubic'
+    
+    interp_func = interp1d(source_indices, source_data, kind=kind, fill_value='extrapolate')
+    return interp_func(target_indices)
+
 # Parse command-line arguments
 if len(sys.argv) > 1:
     CURRENCY = sys.argv[1].upper()
 else:
     CURRENCY = 'BTC'  # Default currency
 
+if len(sys.argv) > 2:
+    TIMEFRAME = sys.argv[2].lower()
+else:
+    TIMEFRAME = '5m'  # Default timeframe
+
 # Validate currency
 if CURRENCY not in ['BTC', 'ETH', 'SOL']:
     print(f"Error: Unsupported currency '{CURRENCY}'. Use: BTC, ETH, or SOL")
+    exit(1)
+
+# Validate timeframe
+valid_timeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
+if TIMEFRAME not in valid_timeframes:
+    print(f"Error: Unsupported timeframe '{TIMEFRAME}'. Use: {', '.join(valid_timeframes)}")
     exit(1)
 
 # Create output directory
@@ -41,7 +76,7 @@ output_dir = f'wavelet_plots/{CURRENCY.lower()}'
 os.makedirs(output_dir, exist_ok=True)
 
 print("=" * 70)
-print(f"GPU-ACCELERATED WAVELET DECOMPOSITION - {CURRENCY}/USDT")
+print(f"GPU-ACCELERATED WAVELET DECOMPOSITION - {CURRENCY}/USDT ({TIMEFRAME})")
 print("=" * 70)
 
 # =============================================================================
@@ -230,11 +265,26 @@ print("=" * 70)
 print(f"FETCHING {CURRENCY} DATA FROM BINANCE")
 print("=" * 70)
 
+# Convert timeframe string to minutes
+def timeframe_to_minutes(tf_string):
+    """Convert timeframe string like '5m', '1h', '1d' to minutes"""
+    if tf_string.endswith('m'):
+        return int(tf_string[:-1])
+    elif tf_string.endswith('h'):
+        return int(tf_string[:-1]) * 60
+    elif tf_string.endswith('d'):
+        return int(tf_string[:-1]) * 1440
+    elif tf_string.endswith('w'):
+        return int(tf_string[:-1]) * 10080
+    else:
+        return 60  # Default to 1 hour
+
 try:
     from datetime import timedelta
     exchange = ccxt.binance({'enableRateLimit': True})
     symbol = f'{CURRENCY}/USDT'
-    timeframe = '5m'
+    timeframe = TIMEFRAME
+    timeframe_minutes = timeframe_to_minutes(timeframe)
     
     # Calculate timestamp for 2 weeks back
     two_weeks_ago = datetime.now() - timedelta(weeks=2)
@@ -405,30 +455,60 @@ ax_orig.grid(True, alpha=0.3)
 ax_orig.legend(loc='upper left')
 ax_orig.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
-# Frequency bands explanation
-freq_bands = [
-    ('1-2 hours', 'Highest frequency band', 'Fastest oscillations (minutes to hours)'),
-    ('2-4 hours', 'Very high frequency', 'Short-term trading movements'),
-    ('4-8 hours', 'High frequency', 'Intraday trend changes'),
-    ('8-16 hours', 'Medium-high frequency', 'Daily cycle patterns'),
-    ('16-32 hours', 'Medium frequency', 'Day-to-day transitions'),
-    ('32-64 hours', 'Medium-low frequency', 'Multi-day swings'),
-    ('64-128 hours', 'Low frequency', 'Weekly patterns'),
-    ('128+ hours', 'Lowest frequency band', 'Major trend reversals')
-]
+# Calculate frequency bands based on actual timeframe
+def format_time_period(minutes):
+    """Format time period in human-readable format"""
+    if minutes < 60:
+        return f"{int(minutes)}min"
+    elif minutes < 1440:
+        hours = minutes / 60
+        return f"{hours:.1f}h" if hours != int(hours) else f"{int(hours)}h"
+    else:
+        days = minutes / 1440
+        return f"{days:.1f}d" if days != int(days) else f"{int(days)}d"
+
+# Generate frequency bands based on timeframe
+freq_bands = []
+for i in range(8):
+    level_samples = 2 ** (i + 1)
+    min_period_minutes = level_samples * timeframe_minutes
+    max_period_minutes = level_samples * 2 * timeframe_minutes
+    
+    min_label = format_time_period(min_period_minutes)
+    max_label = format_time_period(max_period_minutes)
+    
+    if i == 0:
+        description = 'Highest frequency band'
+        detail = 'Fastest oscillations'
+    elif i <= 2:
+        description = 'Very high frequency' if i == 1 else 'High frequency'
+        detail = 'Short-term movements'
+    elif i <= 4:
+        description = 'Medium-high frequency' if i == 3 else 'Medium frequency'
+        detail = 'Intraday to daily patterns'
+    elif i <= 6:
+        description = 'Medium-low frequency' if i == 5 else 'Low frequency'
+        detail = 'Multi-day swings'
+    else:
+        description = 'Lowest frequency band'
+        detail = 'Long-term trends'
+    
+    freq_bands.append((f'{min_label}-{max_label}', description, detail))
+
+# Generate approximation labels
+approx_labels = []
+for i in range(8):
+    level_samples = 2 ** (i + 1)
+    max_period_minutes = level_samples * timeframe_minutes
+    max_label = format_time_period(max_period_minutes)
+    
+    if i < 7:
+        approx_labels.append(f'After removing up to {max_label} fluctuations')
+    else:
+        approx_labels.append(f'Main trend only ({max_label}+ timescale)')
 
 # Plot progressive approximations with overlays showing differences
 approx_colors = ['orangered', 'orange', 'gold', 'yellowgreen', 'limegreen', 'dodgerblue', 'blue', 'darkviolet']
-approx_labels = [
-    'After removing 1-2h noise',
-    'After removing up to 4h fluctuations',
-    'After removing up to 8h movements',
-    'After removing up to 16h variations',
-    'After removing up to 32h (1.3 day) patterns',
-    'After removing up to 64h (2.7 day) swings',
-    'After removing up to 128h (5.3 day) cycles',
-    'Main trend only (5+ day timescale)'
-]
 
 for i in range(8):
     ax_approx = plt.subplot(gs[i+1])
@@ -436,19 +516,14 @@ for i in range(8):
     current_approx = approximations[i]
     
     # Interpolate approximation back to original length
-    approx_indices = np.linspace(0, len(prices)-1, len(current_approx))
-    original_indices = np.arange(len(prices))
-    interp_func = interp1d(approx_indices, current_approx, kind='cubic', fill_value='extrapolate')
-    current_approx_interp = interp_func(original_indices)
+    current_approx_interp = safe_interpolate(current_approx, len(prices))
     
     # Plot previous level (if exists) to show what's being removed
     if i > 0:
         prev_approx = approximations[i-1]
         
         # Interpolate previous level to original length
-        prev_indices = np.linspace(0, len(prices)-1, len(prev_approx))
-        interp_func_prev = interp1d(prev_indices, prev_approx, kind='cubic', fill_value='extrapolate')
-        prev_approx_interp = interp_func_prev(original_indices)
+        prev_approx_interp = safe_interpolate(prev_approx, len(prices))
         
         ax_approx.plot(dates, prev_approx_interp, 'gray', linewidth=1.5, 
                       alpha=0.4, linestyle='--', label=f'Level {i} (previous)')
@@ -540,10 +615,7 @@ for i in range(8):
     current_detail = details[i]
     
     # Interpolate detail back to original length
-    detail_indices = np.linspace(0, len(prices)-1, len(current_detail))
-    original_indices = np.arange(len(prices))
-    interp_func = interp1d(detail_indices, current_detail, kind='cubic', fill_value='extrapolate')
-    current_detail_interp = interp_func(original_indices)
+    current_detail_interp = safe_interpolate(current_detail, len(prices))
     
     # Plot detail coefficients with filled area
     ax_detail.plot(dates, current_detail_interp, linewidth=1.5, alpha=0.8, color=colors_map[i])
@@ -564,17 +636,17 @@ for i in range(8):
     minima_indices, _ = find_peaks(-current_detail)
     maxima_indices, _ = find_peaks(current_detail)
     
-    # Calculate average periods (in hours, accounting for downsampling)
+    # Calculate average periods (in hours, accounting for downsampling and timeframe)
     downsample_factor = 2 ** (i + 1)
     if len(minima_indices) > 1:
         min_periods = np.diff(minima_indices)
-        avg_min_period_hours = min_periods.mean() * downsample_factor
+        avg_min_period_hours = (min_periods.mean() * downsample_factor * timeframe_minutes) / 60.0
     else:
         avg_min_period_hours = 0
     
     if len(maxima_indices) > 1:
         max_periods = np.diff(maxima_indices)
-        avg_max_period_hours = max_periods.mean() * downsample_factor
+        avg_max_period_hours = (max_periods.mean() * downsample_factor * timeframe_minutes) / 60.0
     else:
         avg_max_period_hours = 0
     
@@ -609,6 +681,53 @@ ax_detail.set_xlabel('Date', fontsize=11)
 plt.savefig(f'{output_dir}/02b_frequency_bands.png', dpi=300, bbox_inches='tight')
 plt.close()
 print("✓")
+
+# Save frequency band metrics to JSON for web interface
+import json
+freq_band_metrics = []
+for i in range(8):
+    current_detail = details[i]
+    
+    # Recalculate periods for JSON output
+    from scipy.signal import find_peaks
+    minima_indices, _ = find_peaks(-current_detail)
+    maxima_indices, _ = find_peaks(current_detail)
+    
+    downsample_factor = 2 ** (i + 1)
+    
+    if len(minima_indices) > 1:
+        min_periods = np.diff(minima_indices)
+        avg_min_period_hours = (min_periods.mean() * downsample_factor * timeframe_minutes) / 60.0
+    else:
+        avg_min_period_hours = 0
+    
+    if len(maxima_indices) > 1:
+        max_periods = np.diff(maxima_indices)
+        avg_max_period_hours = (max_periods.mean() * downsample_factor * timeframe_minutes) / 60.0
+    else:
+        avg_max_period_hours = 0
+    
+    if len(maxima_indices) > 0 and len(minima_indices) > 0:
+        max_values = current_detail[maxima_indices]
+        min_values = current_detail[minima_indices]
+        avg_amplitude = float(abs((max_values.mean() - min_values.mean()) / 2))
+    else:
+        avg_amplitude = 0.0
+    
+    freq_band_metrics.append({
+        'level': i + 1,
+        'min_to_min_hours': round(float(avg_min_period_hours), 2),
+        'max_to_max_hours': round(float(avg_max_period_hours), 2),
+        'amplitude': round(float(avg_amplitude), 2)
+    })
+
+metrics_file = os.path.join(output_dir, 'metrics.json')
+with open(metrics_file, 'w') as f:
+    json.dump({
+        'currency': CURRENCY,
+        'timeframe': timeframe,
+        'frequency_bands': freq_band_metrics
+    }, f, indent=2)
 
 # =============================================================================
 # PLOT 3: ANOMALY DETECTION DETAIL
@@ -665,24 +784,31 @@ print("✓")
 
 print("[5/6] Trading signals... ", end='', flush=True)
 
-# Generate signals
-trend = levels[2]
-offset = len(prices) - len(trend)
-aligned_prices = prices[offset:]
-signal_dates = dates[offset:]
-price_deviation = aligned_prices - trend
-buffer = np.std(price_deviation) * 0.5
+# Generate signals using smoother trend (Level 5 for better signals)
+trend = levels[5]  # Use Level 5 for longer-term trend
 
+# Interpolate trend back to original price length
+trend_interp = safe_interpolate(trend, len(prices))
+
+# Calculate deviation and buffer for all prices
+price_deviation = prices - trend_interp
+buffer = np.std(price_deviation) * 0.8  # Increased threshold for more selective signals
+
+# Generate buy/sell signals
 buy_signals = price_deviation < -buffer
 sell_signals = price_deviation > buffer
+
+# Use full arrays for plotting
+aligned_prices = prices
+signal_dates = dates
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), dpi=300)
 fig.suptitle('Trading Signal Generation', fontsize=16, fontweight='bold')
 
 # Price with signals
 ax1.plot(signal_dates, aligned_prices, 'b-', linewidth=1.5, alpha=0.7, label='Price')
-ax1.plot(signal_dates, trend, 'orange', linewidth=2, label='Trend (Level 3)')
-ax1.fill_between(signal_dates, trend - buffer, trend + buffer, alpha=0.2, color='gray', label='Neutral Zone')
+ax1.plot(signal_dates, trend_interp, 'orange', linewidth=2, label='Trend (Level 5)')
+ax1.fill_between(signal_dates, trend_interp - buffer, trend_interp + buffer, alpha=0.2, color='gray', label='Neutral Zone')
 
 # Mark buy/sell signals
 buy_dates = [signal_dates[i] for i in range(len(buy_signals)) if buy_signals[i]]

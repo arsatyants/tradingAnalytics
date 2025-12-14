@@ -28,10 +28,10 @@ mplfinance>=0.12.0           # Financial charts
 # -----------------------------------
 ta>=0.11.0                   # Technical indicators
 
-# SIGNAL PROCESSING (for notebooks)
-# ----------------------------------
+# SIGNAL PROCESSING (for notebooks and GPU scripts)
+# ---------------------------------------------------
 pywavelets>=1.4.0            # Wavelet transforms
-scipy>=1.11.0                # Scientific computing
+scipy>=1.11.0                # Scientific computing (interpolation for GPU scripts)
 statsmodels>=0.14.0          # Statistical models
 ssqueezepy>=0.6.0            # Synchrosqueezing transforms
 
@@ -48,6 +48,11 @@ onnxscript>=0.1.0
 # GPU ACCELERATION (optional - for GPU wavelet scripts)
 # ------------------------------------------------------
 pyopencl>=2023.1.0           # OpenCL (multi-platform GPU)
+
+# WEB INTERFACE (optional - for web_server.py)
+# ---------------------------------------------
+# No additional dependencies - uses Python stdlib only
+# (http.server, json, subprocess, mimetypes)
                              # For OpenGL: PyOpenGL, glfw (see below)
 
 # OPENGL SUPPORT (Raspberry Pi 5 only)

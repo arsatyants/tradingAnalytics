@@ -15,13 +15,12 @@ A cryptocurrency trading analytics toolkit for price prediction and anomaly dete
 ## 📊 Supported Analysis
 
 | Notebook/Script | Cryptocurrency | Key Features |
-|----------|---------------|--------------|
+|----------|---------------|--------------|  
 | `btc-prediction.ipynb` | BTC/USDT | LSTM prediction, wavelet filtering, CWT spectrograms, anomaly detection |
 | `wave_nada.ipynb` | SOL/USDT | Wavelet decomposition, Stochastic Oscillator, Nadaraya-Watson smoothing |
-| `gpu_wavelet_gpu_plot.py` | BTC/USDT | GPU-accelerated OpenCL wavelets, multi-platform support, high-res PNG plots |
-| `gpu_wavelet_plot_cuda.py` | BTC/USDT | CUDA/PyTorch wavelets, automatic CPU fallback, 6-panel visualization |
-
-## 🛠️ Installation
+| `gpu_wavelet_gpu_plot.py` | **BTC/ETH/SOL** | GPU-accelerated OpenCL wavelets, 8-level decomposition, high-res PNG plots |
+| `gpu_wavelet_gpu_console.py` | **BTC/ETH/SOL** | Console mode with ASCII graphs, period/amplitude analysis |
+| `web_server.py` | **BTC/ETH/SOL** | Web interface for running analysis and viewing results |## 🛠️ Installation
 
 ### Prerequisites
 - Python 3.8+
@@ -64,11 +63,18 @@ jupyter lab
 
 4. **Run GPU wavelet scripts** (optional)
 ```bash
-# Auto-detect GPU and generate high-resolution plots
-python gpu_wavelet_gpu_plot.py
+# Single currency (plot version with 6 PNG files)
+python gpu_wavelet_gpu_plot.py BTC  # or ETH, SOL
 
-# Or use CUDA/PyTorch version
-python gpu_wavelet_plot_cuda.py
+# Single currency (console version with ASCII graphs)
+python gpu_wavelet_gpu_console.py BTC
+
+# All currencies at once
+./run_all_currencies.sh          # Generates 18 PNG files
+./run_all_currencies_console.sh  # Console output for all 3
+
+# Web interface (interactive browser-based analysis)
+python web_server.py  # Open http://localhost:8080
 ```
 
 4. **Open a notebook** and start with the data loading cells
@@ -155,11 +161,30 @@ MinMaxScaler [-1, 1] → LSTM/Wavelet Processing → Predictions/Analysis
 ## 🔧 Configuration
 
 ### Switching Cryptocurrencies
+
+**For Notebooks:**
 ```python
 # Edit in any notebook
 symbol = 'ETH/USDT'  # or 'SOL/USDT', 'BNB/USDT', etc.
 timeframe = '15m'    # Adjust timeframe as needed
 since_date = '2025-11-01T00:00:00Z'
+```
+
+**For GPU Scripts (Command-line):**
+```bash
+# Plot version - generates 6 PNG files per currency
+python gpu_wavelet_gpu_plot.py BTC
+python gpu_wavelet_gpu_plot.py ETH
+python gpu_wavelet_gpu_plot.py SOL
+
+# Console version - ASCII graphs with metrics
+python gpu_wavelet_gpu_console.py BTC
+python gpu_wavelet_gpu_console.py ETH
+python gpu_wavelet_gpu_console.py SOL
+
+# Process all currencies
+./run_all_currencies.sh          # 18 PNG files total
+./run_all_currencies_console.sh  # Console analysis for all
 ```
 
 ### GPU/CPU Selection
@@ -210,14 +235,22 @@ The notebooks generate multiple visualization types:
 
 ### GPU Wavelet Script Outputs
 
-The GPU-accelerated scripts generate 6 high-resolution PNG images (300 DPI):
+The GPU-accelerated scripts generate 6 high-resolution PNG images (300 DPI) per currency:
 
+**Plot Files** (in `wavelet_plots/{currency}/`):
 1. **Main Overview** (`01_main_overview.png`) - 4-panel view: price, trend, detail coefficients, volume
-2. **Progressive Approximations** (`02a_progressive_approximations.png`) - Shows how signal gets smoother at each decomposition level with difference overlays
-3. **Frequency Bands** (`02b_frequency_bands.png`) - Detail coefficients separated by frequency (1-2h, 2-4h, 4-8h, 8-16h, 16h+)
+2. **Progressive Approximations** (`02a_progressive_approximations.png`) - 8-level decomposition showing signal smoothing
+3. **Frequency Bands** (`02b_frequency_bands.png`) - Detail coefficients by frequency (6h, 12h, 24h, 48h, 96h, 192h, 384h, 768h+)
 4. **Anomaly Detection** (`03_anomaly_detection.png`) - Volatility analysis with threshold-based anomaly markers
 5. **Trading Signals** (`04_trading_signals.png`) - Buy/sell signals based on deviation from trend
 6. **Statistics Dashboard** (`05_statistics_dashboard.png`) - Comprehensive metrics, distributions, and rolling volatility
+
+**Console Output** (for console version):
+- ASCII graphs for each frequency band
+- Period analysis: Min→Min and Max→Max average distances
+- Amplitude measurements: Average deviation between peaks and troughs
+- Zero-crossing counts for oscillation frequency analysis
+- Real-time GPU processing metrics
 
 **Performance Comparison:**
 - OpenCL (NVIDIA RTX 4060): ~0.6ms for wavelet decomposition
@@ -246,21 +279,52 @@ The GPU-accelerated scripts generate 6 high-resolution PNG images (300 DPI):
 - **Volatility**: Zero out approximation, keep detail coefficients
 - **Reconstruction**: Inverse wavelet transform for each component
 
+## 🌐 Web Interface
+
+A modern web interface for running GPU wavelet analysis:
+
+```bash
+python web_server.py
+# Open http://localhost:8080 in your browser
+```
+
+**Features:**
+- 🎨 Modern gradient UI with smooth animations
+- 💱 Currency selection (BTC, ETH, SOL)
+- ⚡ One-click GPU analysis execution
+- 📊 Live display of all 6 generated plots
+- 🔍 Full-size image preview modal
+- ⏱️ Real-time status and execution time
+- 📱 Responsive design for mobile/desktop
+
+**Architecture:**
+- Pure Python HTTP server (no external dependencies)
+- RESTful API endpoints
+- Subprocess execution of analysis scripts
+- Auto-detection of generated plots
+- Port: 8080 (configurable)
+
 ## 📁 Project Structure
 
 ```
 tradingAnalytics/
-├── btc-prediction.ipynb          # BTC analysis: LSTM + wavelets + anomalies
-├── wave_nada.ipynb               # SOL analysis: wavelets + technical indicators
-├── env.ipynb                     # Dependency installation helper
-├── gpu_wavelet_gpu_plot.py       # OpenCL GPU wavelet decomposition (multi-platform)
-├── gpu_wavelet_plot_cuda.py      # CUDA/PyTorch wavelet decomposition
-├── gpu_wavelet_detailed.py       # ASCII console visualization version
+├── btc-prediction.ipynb               # BTC analysis: LSTM + wavelets + anomalies
+├── wave_nada.ipynb                    # SOL analysis: wavelets + technical indicators
+├── env.ipynb                          # Dependency installation helper
+├── gpu_wavelet_gpu_plot.py            # OpenCL GPU plots (BTC/ETH/SOL) - 6 PNG files
+├── gpu_wavelet_gpu_console.py         # Console mode (BTC/ETH/SOL) - ASCII graphs
+├── web_server.py                      # Web interface for analysis visualization
+├── run_all_currencies.sh              # Batch script for plot generation (18 files)
+├── run_all_currencies_console.sh      # Batch script for console analysis
+├── wavelet_plots/                     # Output directory for generated plots
+│   ├── btc/                          # BTC analysis results (6 PNG files)
+│   ├── eth/                          # ETH analysis results (6 PNG files)
+│   └── sol/                          # SOL analysis results (6 PNG files)
 ├── .github/
-│   └── copilot-instructions.md  # AI agent development guide
-├── README.md                     # This file
-├── WIKI.md                       # Detailed documentation
-└── LICENSE                       # Project license
+│   └── copilot-instructions.md       # AI agent development guide
+├── README.md                          # This file
+├── WIKI.md                            # Detailed documentation
+└── LICENSE                            # Project license
 ```
 
 ## 🎯 Use Cases

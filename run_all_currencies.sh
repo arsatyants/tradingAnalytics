@@ -2,9 +2,13 @@
 
 # Run GPU wavelet analysis for all cryptocurrencies
 # Generates separate plots for BTC, ETH, and SOL
+# Usage: ./run_all_currencies.sh [timeframe]
+# Example: ./run_all_currencies.sh 1h
+
+TIMEFRAME="${1:-5m}"  # Default to 5m if not specified
 
 echo "======================================================================"
-echo "MULTI-CURRENCY WAVELET ANALYSIS"
+echo "MULTI-CURRENCY WAVELET ANALYSIS (Timeframe: $TIMEFRAME)"
 echo "======================================================================"
 echo ""
 
@@ -18,8 +22,8 @@ for CURRENCY in "${CURRENCIES[@]}"; do
     echo "Processing: $CURRENCY"
     echo "----------------------------------------------------------------------"
     
-    # Run the Python script with currency argument
-    .venv/bin/python gpu_wavelet_gpu_plot.py "$CURRENCY"
+    # Run the Python script with currency and timeframe arguments
+    .venv/bin/python gpu_wavelet_gpu_plot.py "$CURRENCY" "$TIMEFRAME"
     
     # Check if successful
     if [ $? -eq 0 ]; then
