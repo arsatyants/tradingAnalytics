@@ -23,13 +23,25 @@ import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 from scipy.interpolate import interp1d
 import os
+import sys
+
+# Parse command-line arguments
+if len(sys.argv) > 1:
+    CURRENCY = sys.argv[1].upper()
+else:
+    CURRENCY = 'BTC'  # Default currency
+
+# Validate currency
+if CURRENCY not in ['BTC', 'ETH', 'SOL']:
+    print(f"Error: Unsupported currency '{CURRENCY}'. Use: BTC, ETH, or SOL")
+    exit(1)
 
 # Create output directory
-output_dir = 'wavelet_plots'
+output_dir = f'wavelet_plots/{CURRENCY.lower()}'
 os.makedirs(output_dir, exist_ok=True)
 
 print("=" * 70)
-print("GPU-ACCELERATED WAVELET DECOMPOSITION - GRAPHICS MODE")
+print(f"GPU-ACCELERATED WAVELET DECOMPOSITION - {CURRENCY}/USDT")
 print("=" * 70)
 
 # =============================================================================
@@ -215,13 +227,13 @@ def gpu_convolve(signal, filter_coeffs, kernel, mode='symmetric'):
 # =============================================================================
 
 print("=" * 70)
-print("FETCHING BTC DATA FROM BINANCE")
+print(f"FETCHING {CURRENCY} DATA FROM BINANCE")
 print("=" * 70)
 
 try:
     from datetime import timedelta
     exchange = ccxt.binance({'enableRateLimit': True})
-    symbol = 'BTC/USDT'
+    symbol = f'{CURRENCY}/USDT'
     timeframe = '5m'
     
     # Calculate timestamp for 2 weeks back
@@ -238,7 +250,7 @@ try:
     dates = [datetime.fromtimestamp(ts / 1000) for ts in timestamps]
     
     print(f"  Data range: {dates[0].strftime('%Y-%m-%d')} to {dates[-1].strftime('%Y-%m-%d')}")
-    print(f"  Current BTC: ${prices[-1]:,.2f}")
+    print(f"  Current {CURRENCY}: ${prices[-1]:,.2f}")
     print(f"  Change: {((prices[-1] - prices[0]) / prices[0] * 100):+.2f}%\n")
     
 except Exception as e:
@@ -326,7 +338,7 @@ aligned_dates = dates[offset:]
 # Subplot 1: Original prices
 ax1 = fig.add_subplot(gs[0])
 ax1.plot(dates, prices, 'b-', linewidth=1, alpha=0.7, label='Original Price')
-ax1.set_title('BTC/USDT Price History (1-hour candles)', fontsize=14, fontweight='bold')
+ax1.set_title(f'{CURRENCY}/USDT Price History (5-minute candles)', fontsize=14, fontweight='bold')
 ax1.set_ylabel('Price (USD)', fontsize=11)
 ax1.grid(True, alpha=0.3)
 ax1.legend(loc='upper left')

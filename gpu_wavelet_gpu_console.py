@@ -46,12 +46,27 @@ import time
 import ccxt
 from datetime import datetime, timedelta
 from scipy.interpolate import interp1d
+import sys
+
+# =============================================================================
+# PARSE COMMAND-LINE ARGUMENTS
+# =============================================================================
+
+if len(sys.argv) > 1:
+    CURRENCY = sys.argv[1].upper()
+else:
+    CURRENCY = 'BTC'  # Default currency
+
+# Validate currency
+if CURRENCY not in ['BTC', 'ETH', 'SOL']:
+    print(f"Error: Unsupported currency '{CURRENCY}'. Use: BTC, ETH, or SOL")
+    exit(1)
 
 # =============================================================================
 # STEP 1: INITIALIZE OPENCL
 # =============================================================================
 print("=" * 70)
-print("GPU-ACCELERATED WAVELET DECOMPOSITION")
+print(f"GPU WAVELET DECOMPOSITION - {CURRENCY}/USDT")
 print("=" * 70)
 
 # Auto-detect best OpenCL platform and device
@@ -414,13 +429,13 @@ try:
         print(f"✓  Current: ${closes[-1]:,.2f}  Change: {((closes[-1] - closes[0]) / closes[0] * 100):+.2f}%")
     
     print(f"\n✓ All data loaded successfully")
-    print(f"  Date range: {currency_data['BTC']['dates'][0].strftime('%Y-%m-%d')} → {currency_data['BTC']['dates'][-1].strftime('%Y-%m-%d')}")
-    print(f"  Total points per currency: {len(currency_data['BTC']['prices'])}")
+    print(f"  Date range: {currency_data[CURRENCY]['dates'][0].strftime('%Y-%m-%d')} → {currency_data[CURRENCY]['dates'][-1].strftime('%Y-%m-%d')}")
+    print(f"  Total points per currency: {len(currency_data[CURRENCY]['prices'])}")
     
-    # For backward compatibility, keep BTC as default
-    prices = currency_data['BTC']['prices']
-    volumes = currency_data['BTC']['volumes']
-    dates = currency_data['BTC']['dates']
+    # Use selected currency
+    prices = currency_data[CURRENCY]['prices']
+    volumes = currency_data[CURRENCY]['volumes']
+    dates = currency_data[CURRENCY]['dates']
     
 except Exception as e:
     print(f"\n✗ Error fetching data from Binance: {e}")
@@ -448,9 +463,9 @@ except Exception as e:
             'symbol': f'{curr}/USDT'
         }
     
-    prices = currency_data['BTC']['prices']
-    volumes = currency_data['BTC']['volumes']
-    dates = currency_data['BTC']['dates']
+    prices = currency_data[CURRENCY]['prices']
+    volumes = currency_data[CURRENCY]['volumes']
+    dates = currency_data[CURRENCY]['dates']
     
     print(f"✓ Generated {n_points} synthetic price points for each currency")
 
