@@ -37,8 +37,8 @@ print("=" * 70)
 
 def detect_best_opencl_platform():
     """
-    Auto-detect the best OpenCL platform available.
-    Priority: NVIDIA CUDA > AMD > Mesa Rusticl (ARM Mali) > Other
+    Auto-detect the best OpenCL platform and device combination.
+    Scores each platform/device pair and selects the highest scoring one.
     """
     platforms = cl.get_platforms()
     
@@ -48,40 +48,67 @@ def detect_best_opencl_platform():
     print(f"\n🔍 Detected {len(platforms)} OpenCL platform(s):")
     for i, p in enumerate(platforms):
         devices = p.get_devices()
-        print(f"   [{i}] {p.name} - {len(devices)} device(s)")
-        for d in devices:
-            print(f"       └─ {d.name} ({d.max_compute_units} CUs)")
+        print(f"   [{i}] {p.name}")
+        for j, d in enumerate(devices):
+            print(f"       └─ Device {j}: {d.name} ({d.max_compute_units} CUs)")
     
-    # Priority 1: NVIDIA CUDA
-    for p in platforms:
-        if 'nvidia' in p.name.lower() or 'cuda' in p.name.lower():
-            print(f"\n✓ Selected: {p.name} (NVIDIA GPU detected)")
-            return p
+    def score_platform_device(platform, device):
+        """Score platform/device combination for best performance."""
+        score = 0
+        platform_name = platform.name.lower()
+        device_name = device.name.lower()
+        
+        # Prefer NVIDIA CUDA (best performance)
+        if 'nvidia' in platform_name or 'cuda' in platform_name:
+            score += 100
+        # AMD ROCm is also excellent
+        elif 'amd' in platform_name or 'rocm' in platform_name:
+            score += 90
+        # Intel is good
+        elif 'intel' in platform_name:
+            score += 80
+        # Rusticl/Mesa (ARM Mali, etc) is functional
+        elif 'rusticl' in platform_name or 'mesa' in platform_name:
+            score += 70
+        # Portable Computing Language
+        elif 'pocl' in platform_name:
+            score += 60
+        
+        # Prefer GPU over CPU
+        if device.type == cl.device_type.GPU:
+            score += 50
+        elif device.type == cl.device_type.ACCELERATOR:
+            score += 40
+        
+        # More compute units = better performance
+        score += min(device.max_compute_units, 50)
+        
+        return score
     
-    # Priority 2: AMD
-    for p in platforms:
-        if 'amd' in p.name.lower() or 'advanced micro devices' in p.name.lower():
-            print(f"\n✓ Selected: {p.name} (AMD GPU detected)")
-            return p
+    # Find best platform/device combination
+    best_score = -1
+    best_platform = None
+    best_device = None
     
-    # Priority 3: Mesa Rusticl (ARM Mali via Panfrost)
-    for p in platforms:
-        if 'rusticl' in p.name.lower() or 'mesa' in p.name.lower():
-            print(f"\n✓ Selected: {p.name} (ARM Mali GPU detected)")
-            return p
+    for platform in platforms:
+        try:
+            devices = platform.get_devices()
+            for device in devices:
+                score = score_platform_device(platform, device)
+                if score > best_score:
+                    best_score = score
+                    best_platform = platform
+                    best_device = device
+        except:
+            continue
     
-    # Priority 4: Intel
-    for p in platforms:
-        if 'intel' in p.name.lower():
-            print(f"\n✓ Selected: {p.name} (Intel GPU detected)")
-            return p
+    if best_platform is None or best_device is None:
+        raise RuntimeError("No suitable OpenCL platform/device found")
     
-    # Fallback: Use first available platform
-    print(f"\n✓ Selected: {platforms[0].name} (default)")
-    return platforms[0]
+    print(f"\n✓ Auto-selected: {best_platform.name} - {best_device.name} (score: {best_score})")
+    return best_platform, best_device
 
-platform = detect_best_opencl_platform()
-device = platform.get_devices()[0]
+platform, device = detect_best_opencl_platform()
 ctx = cl.Context([device])
 queue = cl.CommandQueue(ctx)
 
@@ -135,13 +162,42 @@ print("✓ Wavelets loaded (Haar and DB4)\n")
 # STEP 4: GPU CONVOLUTION FUNCTION
 # =============================================================================
 
-def gpu_convolve(signal, filter_coeffs, kernel):
-    sig_len = len(signal)
+def symmetric_pad(signal, pad_len):
+    """
+    Apply symmetric padding to match PyWavelets 'symmetric' mode.
+    """
+    if pad_len == 0:
+        return signal
+    
+    left_pad = signal[pad_len-1::-1]
+    right_pad = signal[:-pad_len-1:-1]
+    return np.concatenate([left_pad, signal, right_pad])
+
+def gpu_convolve(signal, filter_coeffs, kernel, mode='symmetric'):
+    """
+    Perform convolution on GPU with boundary handling.
+    
+    Args:
+        mode: 'symmetric' (PyWavelets default) or 'valid' (no padding)
+    """
     filt_len = len(filter_coeffs)
+    
+    # Apply padding if symmetric mode
+    if mode == 'symmetric':
+        pad_len = filt_len - 1
+        signal_padded = symmetric_pad(signal, pad_len)
+    else:
+        signal_padded = signal
+    
+    sig_len = len(signal_padded)
     output_len = sig_len - filt_len + 1
+    
+    if output_len <= 0:
+        return np.array([], dtype=np.float32)
+    
     output = np.zeros(output_len, dtype=np.float32)
     
-    signal_buf = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=signal)
+    signal_buf = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=signal_padded)
     filter_buf = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=filter_coeffs)
     output_buf = cl.Buffer(ctx, cl.mem_flags.WRITE_ONLY, output.nbytes)
     
@@ -149,7 +205,9 @@ def gpu_convolve(signal, filter_coeffs, kernel):
           np.int32(sig_len), np.int32(filt_len))
     
     cl.enqueue_copy(queue, output, output_buf)
-    return output
+    
+    # Downsample by 2 (dyadic decomposition)
+    return np.ascontiguousarray(output[::2])
 
 # =============================================================================
 # STEP 5: FETCH REAL BTC DATA
@@ -195,9 +253,9 @@ print("COMPUTING WAVELET DECOMPOSITION")
 print("=" * 70)
 
 start = time.time()
-trend_gpu = gpu_convolve(prices, haar_low_pass, convolve_kernel)
-detail_gpu = gpu_convolve(prices, haar_high_pass, convolve_kernel)
-trend_db4 = gpu_convolve(prices, db4_low_pass, convolve_kernel)
+trend_gpu = gpu_convolve(prices, haar_low_pass, convolve_kernel, mode='symmetric')
+detail_gpu = gpu_convolve(prices, haar_high_pass, convolve_kernel, mode='symmetric')
+trend_db4 = gpu_convolve(prices, db4_low_pass, convolve_kernel, mode='symmetric')
 gpu_time = time.time() - start
 
 print(f"\n✓ Decomposition complete: {gpu_time*1000:.2f}ms")
@@ -211,10 +269,14 @@ details = []         # High-pass (detail at each scale)
 
 current_signal = prices
 
-for i in range(5):
-    # Apply both low-pass and high-pass filters
-    approx = gpu_convolve(current_signal, haar_low_pass, convolve_kernel)
-    detail = gpu_convolve(current_signal, haar_high_pass, convolve_kernel)
+for i in range(8):
+    # Check if signal is long enough
+    if len(current_signal) < len(haar_low_pass):
+        break
+    
+    # Apply both low-pass and high-pass filters with symmetric padding
+    approx = gpu_convolve(current_signal, haar_low_pass, convolve_kernel, mode='symmetric')
+    detail = gpu_convolve(current_signal, haar_high_pass, convolve_kernel, mode='symmetric')
     
     approximations.append(approx)
     details.append(detail)
@@ -310,8 +372,8 @@ print("✓")
 
 print("[2/6] Progressive approximations... ", end='', flush=True)
 
-fig = plt.figure(figsize=(24, 20), dpi=300)
-gs = GridSpec(6, 1, figure=fig, hspace=0.35)
+fig = plt.figure(figsize=(24, 32), dpi=300)
+gs = GridSpec(9, 1, figure=fig, hspace=0.35)
 fig.suptitle('Progressive Approximations - Frequency Filtering', fontsize=20, fontweight='bold')
 
 # Original signal at top
@@ -325,24 +387,30 @@ ax_orig.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
 # Frequency bands explanation
 freq_bands = [
-    ('1-2 hours', '~50% of frequencies', 'Noise & very short-term fluctuations'),
-    ('2-4 hours', '~25% of frequencies', 'Short-term trading movements'),
-    ('4-8 hours', '~12.5% of frequencies', 'Intraday trend changes'),
-    ('8-16 hours', '~6.25% of frequencies', 'Daily cycle patterns'),
-    ('16+ hours (days)', '~3.125% of frequencies', 'Multi-day trend reversals')
+    ('1-2 hours', 'Highest frequency band', 'Fastest oscillations (minutes to hours)'),
+    ('2-4 hours', 'Very high frequency', 'Short-term trading movements'),
+    ('4-8 hours', 'High frequency', 'Intraday trend changes'),
+    ('8-16 hours', 'Medium-high frequency', 'Daily cycle patterns'),
+    ('16-32 hours', 'Medium frequency', 'Day-to-day transitions'),
+    ('32-64 hours', 'Medium-low frequency', 'Multi-day swings'),
+    ('64-128 hours', 'Low frequency', 'Weekly patterns'),
+    ('128+ hours', 'Lowest frequency band', 'Major trend reversals')
 ]
 
 # Plot progressive approximations with overlays showing differences
-approx_colors = ['orangered', 'orange', 'gold', 'limegreen', 'dodgerblue']
+approx_colors = ['orangered', 'orange', 'gold', 'yellowgreen', 'limegreen', 'dodgerblue', 'blue', 'darkviolet']
 approx_labels = [
     'After removing 1-2h noise',
     'After removing up to 4h fluctuations',
     'After removing up to 8h movements',
     'After removing up to 16h variations',
-    'Main trend only (16h+ timescale)'
+    'After removing up to 32h (1.3 day) patterns',
+    'After removing up to 64h (2.7 day) swings',
+    'After removing up to 128h (5.3 day) cycles',
+    'Main trend only (5+ day timescale)'
 ]
 
-for i in range(5):
+for i in range(8):
     ax_approx = plt.subplot(gs[i+1])
     
     offset_a = len(prices) - len(approximations[i])
@@ -430,8 +498,8 @@ print("✓")
 
 print("[3/6] Frequency bands (details)... ", end='', flush=True)
 
-fig = plt.figure(figsize=(24, 20), dpi=300)
-gs = GridSpec(6, 1, figure=fig, hspace=0.35)
+fig = plt.figure(figsize=(24, 32), dpi=300)
+gs = GridSpec(9, 1, figure=fig, hspace=0.35)
 fig.suptitle('Frequency Band Decomposition - Detail Coefficients', fontsize=20, fontweight='bold')
 
 # Original signal at top
@@ -447,9 +515,9 @@ ax_orig.text(0.02, 0.95, f'Range: ${price_range:,.0f}\nStd: ${prices.std():,.0f}
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
 # Plot each detail band
-colors_map = ['red', 'orange', 'gold', 'green', 'blue']
+colors_map = ['red', 'orange', 'gold', 'yellowgreen', 'green', 'dodgerblue', 'blue', 'darkviolet']
 
-for i in range(5):
+for i in range(8):
     ax_detail = plt.subplot(gs[i+1])
     
     offset_d = len(prices) - len(details[i])
@@ -460,10 +528,12 @@ for i in range(5):
     ax_detail.axhline(y=0, color='black', linestyle='-', linewidth=1, alpha=0.7)
     ax_detail.fill_between(dates_d, 0, details[i], alpha=0.3, color=colors_map[i])
     
-    # Statistics
+    # Statistics to show frequency differences
     detail_std = details[i].std()
     detail_range = details[i].max() - details[i].min()
-    detail_mean = abs(details[i]).mean()
+    detail_mean_abs = np.abs(details[i]).mean()
+    # Zero-crossings indicate oscillation frequency
+    zero_crossings = np.sum(np.diff(np.sign(details[i])) != 0)
     
     # Title with comprehensive info
     ax_detail.set_title(f'Band {i+1}: {freq_bands[i][0]} - {freq_bands[i][2]}', 
@@ -472,9 +542,9 @@ for i in range(5):
     ax_detail.grid(True, alpha=0.3)
     ax_detail.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
     
-    # Stats box
+    # Enhanced stats box showing frequency characteristics
     ax_detail.text(0.02, 0.97, 
-                  f'Std: ${detail_std:.1f}\nMean|Δ|: ${detail_mean:.1f}\nRange: ${detail_range:.1f}\n{freq_bands[i][1]}', 
+                  f'σ: ${detail_std:.1f}\nMean|Δ|: ${detail_mean_abs:.1f}\nRange: ${detail_range:.1f}\nZero-crossings: {zero_crossings}\n{freq_bands[i][1]}', 
                   transform=ax_detail.transAxes, fontsize=8, verticalalignment='top',
                   bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7))
     
