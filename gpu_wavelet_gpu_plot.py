@@ -279,6 +279,42 @@ def timeframe_to_minutes(tf_string):
     else:
         return 60  # Default to 1 hour
 
+def get_date_format(tf_string):
+    """Return appropriate date format string for matplotlib based on timeframe"""
+    minutes = timeframe_to_minutes(tf_string)
+    
+    if minutes <= 5:  # 1m, 5m
+        return '%m-%d %H:%M'  # Month-Day Hour:Minute
+    elif minutes <= 30:  # 15m, 30m
+        return '%m-%d %H:%M'  # Month-Day Hour:Minute
+    elif minutes < 1440:  # 1h, 4h (less than 1 day)
+        return '%m-%d %H:%M'  # Month-Day Hour:Minute
+    else:  # 1d and larger
+        return '%Y-%m'  # Year-Month for daily/weekly
+
+def configure_date_axis(ax, tf_string):
+    """Configure date axis with appropriate locator and formatter based on timeframe"""
+    minutes = timeframe_to_minutes(tf_string)
+    
+    if minutes <= 5:  # 1m, 5m - show hours
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=4))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+        ax.xaxis.set_minor_locator(mdates.HourLocator(interval=1))
+    elif minutes <= 30:  # 15m, 30m - show every 6 hours
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=6))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+        ax.xaxis.set_minor_locator(mdates.HourLocator(interval=2))
+    elif minutes < 1440:  # 1h, 4h - show days
+        ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+        ax.xaxis.set_minor_locator(mdates.HourLocator(interval=6))
+    else:  # 1d and larger - show months/years
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+        ax.xaxis.set_minor_locator(mdates.DayLocator(interval=7))
+    
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+
 try:
     from datetime import timedelta
     exchange = ccxt.binance({'enableRateLimit': True})
@@ -286,11 +322,19 @@ try:
     timeframe = TIMEFRAME
     timeframe_minutes = timeframe_to_minutes(timeframe)
     
-    # Calculate timestamp for 2 weeks back
-    two_weeks_ago = datetime.now() - timedelta(weeks=2)
-    since = int(two_weeks_ago.timestamp() * 1000)  # Convert to milliseconds
+    # Calculate appropriate lookback period based on timeframe
+    if timeframe_minutes <= 5:  # 1m, 5m - get 2-3 days
+        lookback = datetime.now() - timedelta(days=3)
+    elif timeframe_minutes <= 30:  # 15m, 30m - get 1 week
+        lookback = datetime.now() - timedelta(weeks=1)
+    elif timeframe_minutes < 1440:  # 1h, 4h - get 1 month
+        lookback = datetime.now() - timedelta(days=30)
+    else:  # 1d and larger - get 2 years
+        lookback = datetime.now() - timedelta(days=730)
     
-    print(f"\n  Downloading {symbol} {timeframe} data from {two_weeks_ago.strftime('%Y-%m-%d %H:%M')}... ", end='', flush=True)
+    since = int(lookback.timestamp() * 1000)  # Convert to milliseconds
+    
+    print(f"\n  Downloading {symbol} {timeframe} data from {lookback.strftime('%Y-%m-%d %H:%M')}... ", end='', flush=True)
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=1000)
     print("✓")
     
@@ -357,7 +401,7 @@ levels = approximations
 detail_abs = np.abs(detail_gpu)
 median = np.median(detail_abs)
 mad = np.median(np.abs(detail_abs - median))
-threshold = 3.0
+threshold = 6.0  # Doubled from 3.0 to raise threshold 100%
 anomaly_threshold = median + threshold * mad
 anomaly_indices = np.where(detail_abs > anomaly_threshold)[0]
 
@@ -392,7 +436,8 @@ ax1.set_title(f'{CURRENCY}/USDT Price History (5-minute candles)', fontsize=14, 
 ax1.set_ylabel('Price (USD)', fontsize=11)
 ax1.grid(True, alpha=0.3)
 ax1.legend(loc='upper left')
-ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax1.set_xlim(dates[0], dates[-1])
+configure_date_axis(ax1, TIMEFRAME)
 
 # Subplot 2: Price with Trend
 ax2 = fig.add_subplot(gs[1])
@@ -402,7 +447,8 @@ ax2.set_title('Price Decomposition: Original vs Trend', fontsize=14, fontweight=
 ax2.set_ylabel('Price (USD)', fontsize=11)
 ax2.grid(True, alpha=0.3)
 ax2.legend(loc='upper left')
-ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax2.set_xlim(dates[0], dates[-1])
+configure_date_axis(ax2, TIMEFRAME)
 
 # Subplot 3: Detail coefficients
 ax3 = fig.add_subplot(gs[2])
@@ -420,7 +466,8 @@ ax3.set_title('Detail Coefficients (High-Frequency Changes)', fontsize=14, fontw
 ax3.set_ylabel('Detail Coefficient (USD)', fontsize=11)
 ax3.grid(True, alpha=0.3)
 ax3.legend(loc='upper left')
-ax3.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax3.set_xlim(aligned_dates[0], aligned_dates[-1])
+configure_date_axis(ax3, TIMEFRAME)
 
 # Subplot 4: Volume
 ax4 = fig.add_subplot(gs[3])
@@ -429,7 +476,8 @@ ax4.set_title('Trading Volume', fontsize=14, fontweight='bold')
 ax4.set_ylabel('Volume (BTC)', fontsize=11)
 ax4.set_xlabel('Date', fontsize=11)
 ax4.grid(True, alpha=0.3)
-ax4.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax4.set_xlim(dates[0], dates[-1])
+configure_date_axis(ax4, TIMEFRAME)
 
 plt.tight_layout()
 plt.savefig(f'{output_dir}/01_main_overview.png', dpi=300, bbox_inches='tight')
@@ -453,7 +501,8 @@ ax_orig.set_title('Original Signal: BTC/USDT', fontsize=13, fontweight='bold')
 ax_orig.set_ylabel('Price (USD)', fontsize=11)
 ax_orig.grid(True, alpha=0.3)
 ax_orig.legend(loc='upper left')
-ax_orig.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax_orig.set_xlim(dates[0], dates[-1])  # Set consistent date range
+configure_date_axis(ax_orig, TIMEFRAME)
 
 # Calculate frequency bands based on actual timeframe
 def format_time_period(minutes):
@@ -564,7 +613,8 @@ for i in range(8):
     ax_approx.set_ylabel('Price (USD)', fontsize=10)
     ax_approx.grid(True, alpha=0.3)
     ax_approx.legend(loc='upper left', fontsize=8)
-    ax_approx.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    ax_approx.set_xlim(dates[0], dates[-1])  # Set consistent date range
+    configure_date_axis(ax_approx, TIMEFRAME)
     
     # Stats box showing what changed
     info_text = f'Smoothness: {smoothness_increase:.2f}x\nRemoved σ: ${removed_variance:.1f}\nFreq kept: ≥{freq_bands[i][0]}'
@@ -600,7 +650,8 @@ ax_orig.plot(dates, prices, 'b-', linewidth=1.5, alpha=0.8)
 ax_orig.set_title('Original Signal: BTC/USDT (All Frequencies Combined)', fontsize=13, fontweight='bold')
 ax_orig.set_ylabel('Price (USD)', fontsize=11)
 ax_orig.grid(True, alpha=0.3)
-ax_orig.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax_orig.set_xlim(dates[0], dates[-1])  # Set consistent date range
+configure_date_axis(ax_orig, TIMEFRAME)
 price_range = prices.max() - prices.min()
 ax_orig.text(0.02, 0.95, f'Range: ${price_range:,.0f}\nStd: ${prices.std():,.0f}', 
             transform=ax_orig.transAxes, fontsize=9, verticalalignment='top',
@@ -614,10 +665,14 @@ for i in range(8):
     
     current_detail = details[i]
     
-    # Interpolate detail back to original length
+    # Create proper date array for this level (downsampled dates)
+    downsample_factor = 2 ** (i + 1)
+    detail_dates = dates[::downsample_factor][:len(current_detail)]
+    
+    # Interpolate detail back to original length for visualization
     current_detail_interp = safe_interpolate(current_detail, len(prices))
     
-    # Plot detail coefficients with filled area
+    # Plot detail coefficients with filled area using original dates for interpolated data
     ax_detail.plot(dates, current_detail_interp, linewidth=1.5, alpha=0.8, color=colors_map[i])
     ax_detail.axhline(y=0, color='black', linestyle='-', linewidth=1, alpha=0.7)
     ax_detail.fill_between(dates, 0, current_detail_interp, alpha=0.3, color=colors_map[i])
@@ -663,7 +718,8 @@ for i in range(8):
                        fontsize=12, fontweight='bold', pad=10)
     ax_detail.set_ylabel('Detail Coeff (USD)', fontsize=10)
     ax_detail.grid(True, alpha=0.3)
-    ax_detail.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    ax_detail.set_xlim(dates[0], dates[-1])  # Set consistent date range
+    configure_date_axis(ax_detail, TIMEFRAME)
     
     # Enhanced stats box showing frequency characteristics
     ax_detail.text(0.02, 0.97, 
@@ -757,7 +813,8 @@ ax1.set_title('Detail Coefficients with Anomaly Markers', fontsize=13)
 ax1.set_ylabel('Detail Coefficient (USD)', fontsize=11)
 ax1.grid(True, alpha=0.3)
 ax1.legend(loc='upper left', fontsize=10)
-ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax1.set_xlim(aligned_dates[0], aligned_dates[-1])
+configure_date_axis(ax1, TIMEFRAME)
 
 # Absolute detail (volatility measure)
 ax2.plot(aligned_dates, detail_abs, 'purple', linewidth=1, alpha=0.7, label='Absolute Detail')
@@ -771,7 +828,8 @@ ax2.set_ylabel('Absolute Detail (USD)', fontsize=11)
 ax2.set_xlabel('Date', fontsize=11)
 ax2.grid(True, alpha=0.3)
 ax2.legend(loc='upper left', fontsize=10)
-ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax2.set_xlim(aligned_dates[0], aligned_dates[-1])
+configure_date_axis(ax2, TIMEFRAME)
 
 plt.subplots_adjust(hspace=0.3)
 plt.savefig(f'{output_dir}/03_anomaly_detection.png', dpi=300, bbox_inches='tight')
@@ -825,7 +883,8 @@ ax1.set_title('Price with Trading Signals', fontsize=13)
 ax1.set_ylabel('Price (USD)', fontsize=11)
 ax1.grid(True, alpha=0.3)
 ax1.legend(loc='upper left', fontsize=10)
-ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax1.set_xlim(dates[0], dates[-1])
+configure_date_axis(ax1, TIMEFRAME)
 
 # Deviation from trend
 ax2.plot(signal_dates, price_deviation, 'purple', linewidth=1.5, alpha=0.7, label='Price Deviation')
@@ -842,7 +901,8 @@ ax2.set_ylabel('Deviation (USD)', fontsize=11)
 ax2.set_xlabel('Date', fontsize=11)
 ax2.grid(True, alpha=0.3)
 ax2.legend(loc='upper left', fontsize=10)
-ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax2.set_xlim(dates[0], dates[-1])
+configure_date_axis(ax2, TIMEFRAME)
 
 plt.subplots_adjust(hspace=0.3)
 plt.savefig(f'{output_dir}/04_trading_signals.png', dpi=300, bbox_inches='tight')
@@ -891,7 +951,8 @@ ax3.set_ylabel('Volatility (USD)', fontsize=10)
 ax3.set_xlabel('Date', fontsize=10)
 ax3.grid(True, alpha=0.3)
 ax3.legend()
-ax3.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+ax3.set_xlim(aligned_dates[0], aligned_dates[-1])
+configure_date_axis(ax3, TIMEFRAME)
 
 # Statistics table
 ax4 = fig.add_subplot(gs[2, :])
