@@ -997,6 +997,29 @@ for i, detail_data in enumerate(details[:min(8, len(details))]):
     detail_mean_abs = np.abs(detail_data).mean()
     zero_crossings = np.sum(np.diff(np.sign(detail_data)) != 0)
     
+    # Find local minima and maxima for period calculation
+    from scipy.signal import find_peaks
+    
+    # Find minima (peaks in negative signal)
+    minima_indices, _ = find_peaks(-detail_data)
+    # Find maxima (peaks in positive signal)
+    maxima_indices, _ = find_peaks(detail_data)
+    
+    # Calculate average periods
+    if len(minima_indices) > 1:
+        min_periods = np.diff(minima_indices)
+        avg_min_period = min_periods.mean()
+        avg_min_period_hours = avg_min_period * (2 ** (i + 1))  # Account for downsampling
+    else:
+        avg_min_period_hours = 0
+    
+    if len(maxima_indices) > 1:
+        max_periods = np.diff(maxima_indices)
+        avg_max_period = max_periods.mean()
+        avg_max_period_hours = avg_max_period * (2 ** (i + 1))  # Account for downsampling
+    else:
+        avg_max_period_hours = 0
+    
     # Interpolate to original length (150 points for display)
     display_length = min(150, len(prices))
     if len(detail_data) < display_length:
@@ -1011,7 +1034,8 @@ for i, detail_data in enumerate(details[:min(8, len(details))]):
     plot_ascii(interpolated, height=8, width=70, 
                title=f"Level {i+1} Detail - {freq_bands}")
     print(f"    Stats: σ=${detail_std:.2f}, Mean|Δ|=${detail_mean_abs:.2f}, "
-          f"Zero-crossings={zero_crossings} (higher=more oscillations)\n")
+          f"Zero-crossings={zero_crossings} (higher=more oscillations)")
+    print(f"    Period: Min→Min={avg_min_period_hours:.1f}h, Max→Max={avg_max_period_hours:.1f}h\n")
 
 # =============================================================================
 # STEP 10: TRADING SIGNAL GENERATION

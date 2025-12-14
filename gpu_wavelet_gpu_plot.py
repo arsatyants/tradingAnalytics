@@ -545,6 +545,27 @@ for i in range(8):
     # Zero-crossings indicate oscillation frequency
     zero_crossings = np.sum(np.diff(np.sign(current_detail_interp)) != 0)
     
+    # Find local minima and maxima for period calculation
+    from scipy.signal import find_peaks
+    
+    # Use original detail data (before interpolation) for accurate period calculation
+    minima_indices, _ = find_peaks(-current_detail)
+    maxima_indices, _ = find_peaks(current_detail)
+    
+    # Calculate average periods (in hours, accounting for downsampling)
+    downsample_factor = 2 ** (i + 1)
+    if len(minima_indices) > 1:
+        min_periods = np.diff(minima_indices)
+        avg_min_period_hours = min_periods.mean() * downsample_factor
+    else:
+        avg_min_period_hours = 0
+    
+    if len(maxima_indices) > 1:
+        max_periods = np.diff(maxima_indices)
+        avg_max_period_hours = max_periods.mean() * downsample_factor
+    else:
+        avg_max_period_hours = 0
+    
     # Title with comprehensive info
     ax_detail.set_title(f'Band {i+1}: {freq_bands[i][0]} - {freq_bands[i][2]}', 
                        fontsize=12, fontweight='bold', pad=10)
@@ -554,7 +575,7 @@ for i in range(8):
     
     # Enhanced stats box showing frequency characteristics
     ax_detail.text(0.02, 0.97, 
-                  f'σ: ${detail_std:.1f}\nMean|Δ|: ${detail_mean_abs:.1f}\nRange: ${detail_range:.1f}\nZero-crossings: {zero_crossings}\n{freq_bands[i][1]}', 
+                  f'σ: ${detail_std:.1f}\nMean|Δ|: ${detail_mean_abs:.1f}\nRange: ${detail_range:.1f}\nZero-crossings: {zero_crossings}\nMin→Min: {avg_min_period_hours:.1f}h\nMax→Max: {avg_max_period_hours:.1f}h\n{freq_bands[i][1]}', 
                   transform=ax_detail.transAxes, fontsize=8, verticalalignment='top',
                   bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7))
     
