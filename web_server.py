@@ -885,6 +885,30 @@ class WaveletHandler(BaseHTTPRequestHandler):
                 `;
             });
             
+            // Add footer note with dynamic timeframe
+            const timeframeNames = {
+                '1m': '1-minute',
+                '5m': '5-minute',
+                '15m': '15-minute',
+                '30m': '30-minute',
+                '1h': '1-hour',
+                '4h': '4-hour',
+                '1d': '1-day'
+            };
+            const timeframeName = timeframeNames[timeframe] || timeframe;
+            
+            html += `
+                <div style="text-align: center; margin-top: 25px; padding: 20px; background: white; border-radius: 12px;">
+                    <p style="color: #6c757d; font-size: 0.95em; line-height: 1.6;">
+                        <strong>Note:</strong> Time periods are calculated based on <strong>${timeframeName} candles</strong> with dyadic downsampling (2ⁿ). 
+                        Each decomposition level doubles the effective timeframe. The analysis uses 1000 samples of trading data. 
+                        Actual oscillation periods and amplitudes vary by cryptocurrency and market conditions. 
+                        These frequency bands help identify price patterns at different time scales for 
+                        developing trading strategies (scalping, day trading, swing trading).
+                    </p>
+                </div>
+            `;
+            
             bandsGrid.innerHTML = html;
             container.style.display = 'block';
         }
