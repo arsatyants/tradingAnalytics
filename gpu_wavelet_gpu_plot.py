@@ -566,6 +566,14 @@ for i in range(8):
     else:
         avg_max_period_hours = 0
     
+    # Calculate average amplitude (deviation between max and min)
+    if len(maxima_indices) > 0 and len(minima_indices) > 0:
+        max_values = current_detail[maxima_indices]
+        min_values = current_detail[minima_indices]
+        avg_amplitude = (max_values.mean() - min_values.mean()) / 2
+    else:
+        avg_amplitude = 0
+    
     # Title with comprehensive info
     ax_detail.set_title(f'Band {i+1}: {freq_bands[i][0]} - {freq_bands[i][2]}', 
                        fontsize=12, fontweight='bold', pad=10)
@@ -575,7 +583,7 @@ for i in range(8):
     
     # Enhanced stats box showing frequency characteristics
     ax_detail.text(0.02, 0.97, 
-                  f'σ: ${detail_std:.1f}\nMean|Δ|: ${detail_mean_abs:.1f}\nRange: ${detail_range:.1f}\nZero-crossings: {zero_crossings}\nMin→Min: {avg_min_period_hours:.1f}h\nMax→Max: {avg_max_period_hours:.1f}h\n{freq_bands[i][1]}', 
+                  f'σ: ${detail_std:.1f}\nMean|Δ|: ${detail_mean_abs:.1f}\nRange: ${detail_range:.1f}\nZero-crossings: {zero_crossings}\nMin→Min: {avg_min_period_hours:.1f}h\nMax→Max: {avg_max_period_hours:.1f}h\nAmplitude: ${avg_amplitude:.1f}\n{freq_bands[i][1]}', 
                   transform=ax_detail.transAxes, fontsize=8, verticalalignment='top',
                   bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7))
     

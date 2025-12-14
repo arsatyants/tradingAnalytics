@@ -1020,6 +1020,14 @@ for i, detail_data in enumerate(details[:min(8, len(details))]):
     else:
         avg_max_period_hours = 0
     
+    # Calculate average amplitude (deviation between max and min)
+    if len(maxima_indices) > 0 and len(minima_indices) > 0:
+        max_values = detail_data[maxima_indices]
+        min_values = detail_data[minima_indices]
+        avg_amplitude = (max_values.mean() - min_values.mean()) / 2
+    else:
+        avg_amplitude = 0
+    
     # Interpolate to original length (150 points for display)
     display_length = min(150, len(prices))
     if len(detail_data) < display_length:
@@ -1035,7 +1043,8 @@ for i, detail_data in enumerate(details[:min(8, len(details))]):
                title=f"Level {i+1} Detail - {freq_bands}")
     print(f"    Stats: σ=${detail_std:.2f}, Mean|Δ|=${detail_mean_abs:.2f}, "
           f"Zero-crossings={zero_crossings} (higher=more oscillations)")
-    print(f"    Period: Min→Min={avg_min_period_hours:.1f}h, Max→Max={avg_max_period_hours:.1f}h\n")
+    print(f"    Period: Min→Min={avg_min_period_hours:.1f}h, Max→Max={avg_max_period_hours:.1f}h, "
+          f"Amplitude=${avg_amplitude:.2f}\n")
 
 # =============================================================================
 # STEP 10: TRADING SIGNAL GENERATION
