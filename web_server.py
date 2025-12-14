@@ -713,10 +713,12 @@ class WaveletHandler(BaseHTTPRequestHandler):
         
         // Run analysis
         async function runAnalysis() {
+            console.log('runAnalysis called');
             const statusEl = document.getElementById('status');
             const analyzeBtn = document.querySelector('.analyze-btn');
             const plotsContainer = document.getElementById('plots-container');
             const selectedTimeframe = document.getElementById('timeframe-select').value;
+            console.log('Selected currency:', selectedCurrency, 'Timeframe:', selectedTimeframe);
             
             // Disable button and show loading
             analyzeBtn.disabled = true;
@@ -886,15 +888,6 @@ class WaveletHandler(BaseHTTPRequestHandler):
             });
             
             // Add footer note with dynamic timeframe
-            const timeframeNames = {
-                '1m': '1-minute',
-                '5m': '5-minute',
-                '15m': '15-minute',
-                '30m': '30-minute',
-                '1h': '1-hour',
-                '4h': '4-hour',
-                '1d': '1-day'
-            };
             const timeframeName = timeframeNames[timeframe] || timeframe;
             
             html += `
