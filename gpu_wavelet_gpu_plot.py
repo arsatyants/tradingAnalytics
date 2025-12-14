@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
+from scipy.interpolate import interp1d
 import os
 
 # Create output directory
@@ -311,6 +312,13 @@ print("\n[1/5] Main overview plot... ", end='', flush=True)
 fig = plt.figure(figsize=(16, 12), dpi=300)
 gs = GridSpec(4, 1, figure=fig, hspace=0.3)
 
+# Interpolate trend back to original length for proper visualization
+from scipy.interpolate import interp1d
+trend_indices = np.linspace(0, len(prices)-1, len(trend_gpu))
+original_indices = np.arange(len(prices))
+interp_func = interp1d(trend_indices, trend_gpu, kind='cubic', fill_value='extrapolate')
+trend_interpolated = interp_func(original_indices)
+
 # Align dates
 offset = len(prices) - len(trend_gpu)
 aligned_dates = dates[offset:]
@@ -327,7 +335,7 @@ ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 # Subplot 2: Price with Trend
 ax2 = fig.add_subplot(gs[1])
 ax2.plot(dates, prices, 'b-', linewidth=1, alpha=0.4, label='Original Price')
-ax2.plot(aligned_dates, trend_gpu, 'r-', linewidth=2, label='Trend (Low-pass)')
+ax2.plot(dates, trend_interpolated, 'r-', linewidth=2, label='Trend (Low-pass, interpolated)')
 ax2.set_title('Price Decomposition: Original vs Trend', fontsize=14, fontweight='bold')
 ax2.set_ylabel('Price (USD)', fontsize=11)
 ax2.grid(True, alpha=0.3)
@@ -413,58 +421,55 @@ approx_labels = [
 for i in range(8):
     ax_approx = plt.subplot(gs[i+1])
     
-    offset_a = len(prices) - len(approximations[i])
-    dates_a = dates[offset_a:]
     current_approx = approximations[i]
+    
+    # Interpolate approximation back to original length
+    approx_indices = np.linspace(0, len(prices)-1, len(current_approx))
+    original_indices = np.arange(len(prices))
+    interp_func = interp1d(approx_indices, current_approx, kind='cubic', fill_value='extrapolate')
+    current_approx_interp = interp_func(original_indices)
     
     # Plot previous level (if exists) to show what's being removed
     if i > 0:
-        offset_prev = len(prices) - len(approximations[i-1])
-        dates_prev = dates[offset_prev:]
         prev_approx = approximations[i-1]
         
-        # Resample previous to match current length
-        if len(prev_approx) != len(current_approx):
-            # Simple downsampling by taking every other point
-            indices = np.linspace(0, len(prev_approx)-1, len(current_approx)).astype(int)
-            prev_approx_resampled = prev_approx[indices]
-        else:
-            prev_approx_resampled = prev_approx
-            
-        ax_approx.plot(dates_a, prev_approx_resampled, 'gray', linewidth=1.5, 
+        # Interpolate previous level to original length
+        prev_indices = np.linspace(0, len(prices)-1, len(prev_approx))
+        interp_func_prev = interp1d(prev_indices, prev_approx, kind='cubic', fill_value='extrapolate')
+        prev_approx_interp = interp_func_prev(original_indices)
+        
+        ax_approx.plot(dates, prev_approx_interp, 'gray', linewidth=1.5, 
                       alpha=0.4, linestyle='--', label=f'Level {i} (previous)')
         
         # Show the difference (what was removed)
-        difference = prev_approx_resampled - current_approx
+        difference = prev_approx_interp - current_approx_interp
         ax_diff = ax_approx.twinx()
-        ax_diff.fill_between(dates_a, 0, difference, alpha=0.2, color='red', label='Removed')
+        ax_diff.fill_between(dates, 0, difference, alpha=0.2, color='red', label='Removed')
         ax_diff.set_ylabel('Removed (USD)', fontsize=9, color='red')
         ax_diff.tick_params(axis='y', labelcolor='red', labelsize=8)
         ax_diff.set_ylim(-difference.std()*3, difference.std()*3)
     else:
         # First level - compare to original
-        original_segment = prices[offset_a:offset_a+len(approximations[i])]
-        ax_approx.plot(dates_a, original_segment, 'gray', linewidth=1.5, 
+        ax_approx.plot(dates, prices, 'gray', linewidth=1.5, 
                       alpha=0.4, linestyle='--', label='Original')
         
-        difference = original_segment - current_approx
+        difference = prices - current_approx_interp
         ax_diff = ax_approx.twinx()
-        ax_diff.fill_between(dates_a, 0, difference, alpha=0.2, color='red')
+        ax_diff.fill_between(dates, 0, difference, alpha=0.2, color='red')
         ax_diff.set_ylabel('Removed (USD)', fontsize=9, color='red')
         ax_diff.tick_params(axis='y', labelcolor='red', labelsize=8)
         ax_diff.set_ylim(-difference.std()*3, difference.std()*3)
     
     # Plot current approximation (main signal)
-    ax_approx.plot(dates_a, current_approx, linewidth=2.5, alpha=0.9, 
+    ax_approx.plot(dates, current_approx_interp, linewidth=2.5, alpha=0.9, 
                   color=approx_colors[i], label=f'Level {i+1}', zorder=10)
     
     # Calculate metrics
     if i > 0:
-        smoothness_increase = (prev_approx_resampled.std() / (current_approx.std() + 1e-10)) 
+        smoothness_increase = (prev_approx_interp.std() / (current_approx_interp.std() + 1e-10)) 
         removed_variance = difference.std()
     else:
-        original_segment = prices[offset_a:offset_a+len(approximations[i])]
-        smoothness_increase = original_segment.std() / (current_approx.std() + 1e-10)
+        smoothness_increase = prices.std() / (current_approx_interp.std() + 1e-10)
         removed_variance = difference.std()
     
     ax_approx.set_title(f'Level {i+1}: {approx_labels[i]}', 
@@ -520,20 +525,25 @@ colors_map = ['red', 'orange', 'gold', 'yellowgreen', 'green', 'dodgerblue', 'bl
 for i in range(8):
     ax_detail = plt.subplot(gs[i+1])
     
-    offset_d = len(prices) - len(details[i])
-    dates_d = dates[offset_d:]
+    current_detail = details[i]
+    
+    # Interpolate detail back to original length
+    detail_indices = np.linspace(0, len(prices)-1, len(current_detail))
+    original_indices = np.arange(len(prices))
+    interp_func = interp1d(detail_indices, current_detail, kind='cubic', fill_value='extrapolate')
+    current_detail_interp = interp_func(original_indices)
     
     # Plot detail coefficients with filled area
-    ax_detail.plot(dates_d, details[i], linewidth=1.5, alpha=0.8, color=colors_map[i])
+    ax_detail.plot(dates, current_detail_interp, linewidth=1.5, alpha=0.8, color=colors_map[i])
     ax_detail.axhline(y=0, color='black', linestyle='-', linewidth=1, alpha=0.7)
-    ax_detail.fill_between(dates_d, 0, details[i], alpha=0.3, color=colors_map[i])
+    ax_detail.fill_between(dates, 0, current_detail_interp, alpha=0.3, color=colors_map[i])
     
     # Statistics to show frequency differences
-    detail_std = details[i].std()
-    detail_range = details[i].max() - details[i].min()
-    detail_mean_abs = np.abs(details[i]).mean()
+    detail_std = current_detail_interp.std()
+    detail_range = current_detail_interp.max() - current_detail_interp.min()
+    detail_mean_abs = np.abs(current_detail_interp).mean()
     # Zero-crossings indicate oscillation frequency
-    zero_crossings = np.sum(np.diff(np.sign(details[i])) != 0)
+    zero_crossings = np.sum(np.diff(np.sign(current_detail_interp)) != 0)
     
     # Title with comprehensive info
     ax_detail.set_title(f'Band {i+1}: {freq_bands[i][0]} - {freq_bands[i][2]}', 
