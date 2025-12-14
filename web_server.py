@@ -662,13 +662,9 @@ class WaveletHandler(BaseHTTPRequestHandler):
                     </div>
                 </div>
             </div>
-            <div style="text-align: center; margin-top: 25px; padding: 20px; background: white; border-radius: 12px;">
+            <div id="frequency-bands-note" style="text-align: center; margin-top: 25px; padding: 20px; background: white; border-radius: 12px;">
                 <p style="color: #6c757d; font-size: 0.95em; line-height: 1.6;">
-                    <strong>Note:</strong> Time periods are calculated based on <strong>5-minute candles</strong> with dyadic downsampling (2ⁿ). 
-                    Each decomposition level doubles the effective timeframe. The analysis uses 1000 samples covering approximately 
-                    <strong>3.5 days</strong> of trading data. Actual oscillation periods and amplitudes vary by cryptocurrency 
-                    and market conditions. These frequency bands help identify price patterns at different time scales for 
-                    developing trading strategies (scalping, day trading, swing trading).
+                    <strong>Note:</strong> Run an analysis to see frequency band information for your selected timeframe.
                 </p>
             </div>
         </div>
