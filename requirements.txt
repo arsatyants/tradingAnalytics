@@ -1,64 +1,65 @@
 # Trading Analytics Dependencies
 # =============================================================================
+# Compatible with Python 3.12+ (December 2025)
+# Latest stable versions as of December 2025
 
 # CORE REQUIREMENTS (minimal setup)
 # ---------------------------------
-numpy>=1.24.0                # Required for all scripts
-pandas>=2.0.0                # Required for notebooks
+numpy==2.2.1                 # Required for all scripts
+pandas==2.2.3                # Required for notebooks
 
 # CRYPTOCURRENCY DATA (optional for CPU script with --demo)
 # ---------------------------------------------------------
-ccxt>=4.0.0                  # Binance API - causes bus errors on Pi Zero
+ccxt==4.4.37                 # Binance API - causes bus errors on Pi Zero
                              # Use --demo flag to bypass on Pi Zero
 
 # DEEP LEARNING (for notebooks only)
 # -----------------------------------
-torch>=2.0.0                 # PyTorch with CUDA support
-torchvision>=0.15.0
-torchaudio>=2.0.0
-scikit-learn>=1.3.0
+torch==2.5.1                 # PyTorch with CUDA support
+torchvision==0.20.1
+torchaudio==2.5.1
+scikit-learn==1.6.0
 
 # VISUALIZATION (optional with --no-plots)
 # -----------------------------------------
-matplotlib>=3.7.0            # Plotting - may have issues on Pi Zero
-seaborn>=0.12.0              # Statistical visualization
-mplfinance>=0.12.0           # Financial charts
+matplotlib==3.10.0           # Plotting - may have issues on Pi Zero
+seaborn==0.13.2              # Statistical visualization
+mplfinance==0.12.10b0        # Financial charts
 
 # TECHNICAL ANALYSIS (for notebooks)
 # -----------------------------------
-ta>=0.11.0                   # Technical indicators
+ta==0.11.0                   # Technical indicators
 
 # SIGNAL PROCESSING (for notebooks and GPU scripts)
 # ---------------------------------------------------
-pywavelets>=1.4.0            # Wavelet transforms
-scipy>=1.11.0                # Scientific computing (interpolation for GPU scripts)
-statsmodels>=0.14.0          # Statistical models
-ssqueezepy>=0.6.0            # Synchrosqueezing transforms
+pywavelets==1.7.0            # Wavelet transforms
+scipy==1.14.1                # Scientific computing (interpolation for GPU scripts)
+statsmodels==0.14.4          # Statistical models
+ssqueezepy==0.6.5            # Synchrosqueezing transforms
 
 # JUPYTER ENVIRONMENT (for notebooks)
 # ------------------------------------
-jupyterlab>=4.0.0
-ipython>=8.0.0
+jupyterlab==4.3.4
+ipython==8.31.0
 
 # MODEL EXPORT (for notebooks)
 # -----------------------------
-onnx>=1.14.0
-onnxscript>=0.1.0
+onnx==1.17.0
+onnxscript==0.1.0.dev20241203
 
 # GPU ACCELERATION (optional - for GPU wavelet scripts)
 # ------------------------------------------------------
-pyopencl>=2023.1.0           # OpenCL (multi-platform GPU)
+pyopencl==2025.2.7           # OpenCL (multi-platform GPU)
 
 # WEB INTERFACE (optional - for web_server.py)
 # ---------------------------------------------
 # No additional dependencies - uses Python stdlib only
 # (http.server, json, subprocess, mimetypes)
-                             # For OpenGL: PyOpenGL, glfw (see below)
 
 # OPENGL SUPPORT (Raspberry Pi 5 only)
 # -------------------------------------
-# PyOpenGL>=3.1.7            # Uncomment for OpenGL compute shaders
-# glfw>=2.6.0                # Uncomment for GLFW window context
+# PyOpenGL==3.1.7            # Uncomment for OpenGL compute shaders
+# glfw==2.7.0                # Uncomment for GLFW window context
 
 # =============================================================================
 # INSTALLATION NOTES
@@ -68,15 +69,22 @@ pyopencl>=2023.1.0           # OpenCL (multi-platform GPU)
 #   pip install -r requirements.txt
 #
 # Minimal installation (CPU script with demo data):
-#   pip install numpy
+#   pip install numpy==2.2.1
 #
 # Raspberry Pi Zero (safe mode):
-#   pip install numpy
+#   pip install numpy==2.2.1
 #   python gpu_wavelet_cpu_plot.py --demo --no-plots
 #
 # GPU Scripts:
-#   - CUDA:   Requires PyTorch with CUDA (torch>=2.0.0)
-#   - OpenCL: pip install pyopencl
-#   - OpenGL: pip install PyOpenGL glfw (Raspberry Pi 5)
+#   - CUDA:   PyTorch with CUDA included (torch==2.5.1)
+#   - OpenCL: pip install pyopencl==2025.2.7
+#   - OpenGL: pip install PyOpenGL==3.1.7 glfw==2.7.0 (Raspberry Pi 5)
+#
+# For CUDA on Linux:
+#   pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+#
+# Known Issues:
+#   - Python 3.12 compatibility: Some older numpy versions may require updates
+#   - pyopencl requires OpenCL drivers (NVIDIA/AMD/Intel)
 #
 # =============================================================================
