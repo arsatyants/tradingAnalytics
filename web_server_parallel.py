@@ -237,7 +237,7 @@ class ParallelWaveletHandler(BaseHTTPRequestHandler):
             
             prep_result = subprocess.run(
                 [PYTHON_BIN, 'prepare_data.py', currency, timeframe],
-                capture_output=True, text=True, timeout=60
+                capture_output=True, text=True, timeout=120  # 2 minutes for data prep
             )
             
             if prep_result.returncode != 0:
@@ -252,7 +252,7 @@ class ParallelWaveletHandler(BaseHTTPRequestHandler):
             
             plot_result = subprocess.run(
                 [PYTHON_BIN, 'gpu_wavelet_gpu_plot.py', currency, timeframe],
-                capture_output=True, text=True, timeout=120
+                capture_output=True, text=True, timeout=360  # 6 minutes
             )
             
             if plot_result.returncode != 0:
