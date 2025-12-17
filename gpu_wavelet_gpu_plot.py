@@ -335,8 +335,11 @@ try:
     since = int(lookback.timestamp() * 1000)  # Convert to milliseconds
     
     print(f"\n  Downloading {symbol} {timeframe} data from {lookback.strftime('%Y-%m-%d %H:%M')}... ", end='', flush=True)
+    data_load_start = time.time()
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=1000)
+    data_load_time = time.time() - data_load_start
     print("✓")
+    print(f"  [TIMING] Data loading: {data_load_time:.3f}s")
     
     timestamps = np.array([candle[0] for candle in ohlcv])
     prices = np.array([candle[4] for candle in ohlcv], dtype=np.float32)
@@ -359,18 +362,20 @@ print("=" * 70)
 print("COMPUTING WAVELET DECOMPOSITION")
 print("=" * 70)
 
-start = time.time()
+wavelet_start = time.time()
 trend_gpu = gpu_convolve(prices, haar_low_pass, convolve_kernel, mode='symmetric')
 detail_gpu = gpu_convolve(prices, haar_high_pass, convolve_kernel, mode='symmetric')
 trend_db4 = gpu_convolve(prices, db4_low_pass, convolve_kernel, mode='symmetric')
-gpu_time = time.time() - start
+gpu_time = time.time() - wavelet_start
 
-print(f"\n✓ Decomposition complete: {gpu_time*1000:.2f}ms")
+print(f"\n✓ Basic decomposition: {gpu_time*1000:.2f}ms")
 print(f"  Trend points: {len(trend_gpu)}")
 print(f"  Detail points: {len(detail_gpu)}\n")
 
 # Multi-level decomposition (proper wavelet pyramid)
 # Each level shows: approximation (trend) and detail at that scale
+print("  Computing 8-level decomposition... ", end='', flush=True)
+multilevel_start = time.time()
 approximations = []  # Low-pass (smoothed trend)
 details = []         # High-pass (detail at each scale)
 
@@ -393,6 +398,10 @@ for i in range(8):
 
 # For compatibility, keep 'levels' as approximations
 levels = approximations
+multilevel_time = time.time() - multilevel_start
+print(f"✓ ({multilevel_time:.3f}s)")
+total_wavelet_time = time.time() - wavelet_start
+print(f"  [TIMING] Total wavelet computation: {total_wavelet_time:.3f}s\n")
 
 # =============================================================================
 # STEP 7: ANOMALY DETECTION
@@ -409,11 +418,14 @@ print("=" * 70)
 print("GENERATING PLOTS")
 print("=" * 70)
 
+plot_generation_start = time.time()
+
 # =============================================================================
 # PLOT 1: MAIN OVERVIEW (4 SUBPLOTS)
 # =============================================================================
 
-print("\n[1/5] Main overview plot... ", end='', flush=True)
+print("\n[1/6] Main overview plot... ", end='', flush=True)
+plot_start = time.time()
 
 fig = plt.figure(figsize=(16, 12), dpi=300)
 gs = GridSpec(4, 1, figure=fig, hspace=0.3)
@@ -1010,6 +1022,8 @@ print("✓")
 # SUMMARY
 # =============================================================================
 
+plot_generation_time = time.time() - plot_generation_start
+
 print("\n" + "=" * 70)
 print("COMPLETE!")
 print("=" * 70)
@@ -1023,4 +1037,12 @@ print(f"  5. 04_trading_signals.png             - Buy/sell signals")
 print(f"  6. 05_statistics_dashboard.png        - Statistical summary")
 print(f"\nGPU Processing Time: {gpu_time*1000:.2f}ms")
 print(f"Device: {device.name}")
+print("=" * 70)
+print("\n" + "=" * 70)
+print("TIMING BREAKDOWN")
+print("=" * 70)
+print(f"  Data loading (Binance):    {data_load_time:.3f}s")
+print(f"  Wavelet computation:       {total_wavelet_time:.3f}s")
+print(f"  Plot generation:           {plot_generation_time:.3f}s")
+print(f"  TOTAL:                     {data_load_time + total_wavelet_time + plot_generation_time:.3f}s")
 print("=" * 70)

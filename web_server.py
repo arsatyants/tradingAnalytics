@@ -14,19 +14,25 @@ Usage:
 Then open: http://localhost:8080
 """
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 import subprocess
 import json
 import os
 import time
 from urllib.parse import urlparse, parse_qs
 import mimetypes
+import gzip
+import hashlib
+from datetime import datetime
 
 # Configuration
 PORT = 8080
+# Use GPU plot script (works on Orange Pi with OpenCL or CPU fallback)
 PLOT_SCRIPT = 'gpu_wavelet_gpu_plot.py'
 PYTHON_BIN = '.venv/bin/python'
 OUTPUT_DIR = 'wavelet_plots'
+CACHE_MAX_AGE = 10  # 10 seconds cache for images
+ENABLE_COMPRESSION = True  # Gzip compression for large responses
 
 class WaveletHandler(BaseHTTPRequestHandler):
     
@@ -62,7 +68,7 @@ class WaveletHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'404 Not Found')
     
     def serve_index(self):
-        """Serve the main HTML page"""
+        """Serve the main HTML page with compression"""
         html = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -738,7 +744,12 @@ class WaveletHandler(BaseHTTPRequestHandler):
                 
                 if (result.success) {
                     statusEl.className = 'status success';
-                    statusEl.innerHTML = '✓ Analysis complete! Generated ' + result.plots.length + ' plots in ' + result.execution_time + ' seconds';
+                    let timingInfo = '';
+                    if (result.timing) {
+                        timingInfo = ` (script: ${result.script_time}s, total: ${result.execution_time}s)`;
+                    }
+                    statusEl.innerHTML = '✓ Analysis complete! Generated ' + result.plots.length + ' plots' + timingInfo;
+                    console.log('Timing breakdown:', result.timing);
                     console.log('Received metrics:', result.metrics);
                     console.log('Frequency bands:', result.metrics.frequency_bands);
                     displayMetrics(result.metrics, selectedCurrency);
@@ -760,7 +771,16 @@ class WaveletHandler(BaseHTTPRequestHandler):
         function displayMetrics(metrics, currency) {
             const metricsPanel = document.getElementById('metrics-panel');
             
-            if (!metrics.current_price && !metrics.price_change && !metrics.gpu_time) {
+            console.log('displayMetrics called with:', metrics);
+            console.log('Timing data:', {
+                data_load: metrics.data_load_time,
+                wavelet: metrics.wavelet_time,
+                plot: metrics.plot_time
+            });
+            
+            // Show panel if any metric is present (including timing data)
+            if (!metrics.current_price && !metrics.price_change && !metrics.gpu_time && 
+                !metrics.gpu_platform && !metrics.data_load_time && !metrics.wavelet_time && !metrics.plot_time) {
                 metricsPanel.style.display = 'none';
                 return;
             }
@@ -792,6 +812,43 @@ class WaveletHandler(BaseHTTPRequestHandler):
                     <div class="metric-card">
                         <div class="metric-label">GPU Processing</div>
                         <div class="metric-value">${metrics.gpu_time}</div>
+                    </div>
+                `;
+            }
+            
+            if (metrics.gpu_platform) {
+                html += `
+                    <div class="metric-card">
+                        <div class="metric-label">GPU Platform</div>
+                        <div class="metric-value" style="font-size: 0.9em;">${metrics.gpu_platform}</div>
+                    </div>
+                `;
+            }
+            
+            // Add detailed timing breakdown
+            if (metrics.data_load_time) {
+                html += `
+                    <div class="metric-card">
+                        <div class="metric-label">Data Loading</div>
+                        <div class="metric-value">${metrics.data_load_time}</div>
+                    </div>
+                `;
+            }
+            
+            if (metrics.wavelet_time) {
+                html += `
+                    <div class="metric-card">
+                        <div class="metric-label">Wavelet Computation</div>
+                        <div class="metric-value">${metrics.wavelet_time}</div>
+                    </div>
+                `;
+            }
+            
+            if (metrics.plot_time) {
+                html += `
+                    <div class="metric-card">
+                        <div class="metric-label">Plot Generation</div>
+                        <div class="metric-value">${metrics.plot_time}</div>
                     </div>
                 `;
             }
@@ -950,10 +1007,22 @@ class WaveletHandler(BaseHTTPRequestHandler):
 </body>
 </html>"""
         
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        self.wfile.write(html.encode())
+        # Compress HTML if client supports it
+        html_bytes = html.encode()
+        if ENABLE_COMPRESSION and 'gzip' in self.headers.get('Accept-Encoding', ''):
+            html_bytes = gzip.compress(html_bytes, compresslevel=6)
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.send_header('Content-Encoding', 'gzip')
+            self.send_header('Content-Length', str(len(html_bytes)))
+            self.end_headers()
+            self.wfile.write(html_bytes)
+        else:
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.send_header('Content-Length', str(len(html_bytes)))
+            self.end_headers()
+            self.wfile.write(html_bytes)
     
     def serve_currencies(self):
         """Serve list of available currencies"""
@@ -988,15 +1057,76 @@ class WaveletHandler(BaseHTTPRequestHandler):
                 }, status=400)
                 return
             
-            # Run analysis script
-            start_time = time.time()
-            result = subprocess.run(
-                [PYTHON_BIN, PLOT_SCRIPT, currency, timeframe],
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-            execution_time = time.time() - start_time
+            # Timing breakdown
+            timing = {
+                'cache_check': 0.0,
+                'script_execution': 0.0,
+                'plot_discovery': 0.0,
+                'metrics_extraction': 0.0,
+                'total': 0.0
+            }
+            request_start = time.time()
+            
+            # Check if plots already exist and are recent (< 10s) with same timeframe
+            cache_start = time.time()
+            plot_dir = os.path.join(OUTPUT_DIR, currency.lower())
+            cache_valid = False
+            cached_timeframe = None
+            
+            # Check for metadata file with timeframe info
+            metadata_file = os.path.join(plot_dir, '.cache_metadata.json')
+            if os.path.exists(metadata_file):
+                try:
+                    with open(metadata_file, 'r') as f:
+                        cache_meta = json.load(f)
+                        cached_timeframe = cache_meta.get('timeframe')
+                        cache_timestamp = cache_meta.get('timestamp', 0)
+                        file_age = time.time() - cache_timestamp
+                except:
+                    file_age = CACHE_MAX_AGE + 1  # Force regeneration on error
+            else:
+                file_age = CACHE_MAX_AGE + 1  # No metadata, force regeneration
+            
+            # Cache is valid only if: age < 10s AND timeframe matches
+            if os.path.exists(plot_dir) and cached_timeframe == timeframe and file_age < CACHE_MAX_AGE:
+                plot_files = [f for f in os.listdir(plot_dir) if f.endswith('.png')]
+                cache_valid = len(plot_files) > 0
+            
+            timing['cache_check'] = time.time() - cache_start
+            
+            # Run analysis script only if cache is invalid
+            if not cache_valid:
+                script_start = time.time()
+                print(f"[TIMING] Starting script execution for {currency}/{timeframe}")
+                # Pass currency and timeframe as arguments
+                result = subprocess.run(
+                    [PYTHON_BIN, PLOT_SCRIPT, currency, timeframe],
+                    capture_output=True,
+                    text=True,
+                    timeout=180,  # Increased timeout for slower Orange Pi
+                    cwd=os.getcwd()
+                )
+                timing['script_execution'] = time.time() - script_start
+                print(f"[TIMING] Script completed in {timing['script_execution']:.2f}s")
+                
+                # Save cache metadata with timeframe
+                if result.returncode == 0:
+                    os.makedirs(plot_dir, exist_ok=True)
+                    metadata_file = os.path.join(plot_dir, '.cache_metadata.json')
+                    cache_meta = {
+                        'currency': currency,
+                        'timeframe': timeframe,
+                        'timestamp': time.time()
+                    }
+                    with open(metadata_file, 'w') as f:
+                        json.dump(cache_meta, f)
+            else:
+                print(f"[TIMING] Using cached data (age: {file_age:.0f}s, timeframe: {timeframe})")
+                # Use cached data
+                result = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout='Using cached data', stderr=''
+                )
+                timing['script_execution'] = 0.0
             
             if result.returncode != 0:
                 self.send_json_response({
@@ -1006,11 +1136,13 @@ class WaveletHandler(BaseHTTPRequestHandler):
                 return
             
             # Get list of generated plots
+            plot_start = time.time()
             plot_dir = os.path.join(OUTPUT_DIR, currency.lower())
             if not os.path.exists(plot_dir):
                 self.send_json_response({
                     'success': False,
-                    'error': 'Plot directory not found'
+                    'error': 'Plot directory not found',
+                    'timing': timing
                 }, status=500)
                 return
             
@@ -1028,9 +1160,12 @@ class WaveletHandler(BaseHTTPRequestHandler):
                 plot_path = os.path.join(plot_dir, plot_file)
                 if os.path.exists(plot_path):
                     plots.append(f'/plots/{currency.lower()}/{plot_file}')
+            timing['plot_discovery'] = time.time() - plot_start
             
             # Extract metrics from script output
+            metrics_start = time.time()
             metrics = self.extract_metrics(result.stdout)
+            timing['metrics_extraction'] = time.time() - metrics_start
             
             # Read frequency band metrics from JSON file
             metrics_file = os.path.join(plot_dir, 'metrics.json')
@@ -1042,12 +1177,24 @@ class WaveletHandler(BaseHTTPRequestHandler):
                 except:
                     pass
             
+            timing['total'] = time.time() - request_start
+            
+            # Log timing breakdown
+            print(f"[TIMING] Breakdown for {currency}/{timeframe}:")
+            print(f"  Cache check:       {timing['cache_check']:.3f}s")
+            print(f"  Script execution:  {timing['script_execution']:.3f}s")
+            print(f"  Plot discovery:    {timing['plot_discovery']:.3f}s")
+            print(f"  Metrics extract:   {timing['metrics_extraction']:.3f}s")
+            print(f"  TOTAL:             {timing['total']:.3f}s")
+            
             self.send_json_response({
                 'success': True,
                 'currency': currency,
                 'plots': plots,
-                'execution_time': f'{execution_time:.2f}',
-                'metrics': metrics
+                'execution_time': f'{timing["total"]:.2f}',
+                'script_time': f'{timing["script_execution"]:.2f}',
+                'metrics': metrics,
+                'timing': timing
             })
             
         except json.JSONDecodeError:
@@ -1067,7 +1214,7 @@ class WaveletHandler(BaseHTTPRequestHandler):
             }, status=500)
     
     def serve_image(self, path):
-        """Serve plot images"""
+        """Serve plot images with caching and conditional requests"""
         # Remove leading /plots/ and construct file path
         relative_path = path[7:]  # Remove '/plots/'
         file_path = os.path.join(OUTPUT_DIR, relative_path)
@@ -1078,19 +1225,40 @@ class WaveletHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'Image not found')
             return
         
+        # Get file stats
+        stat_info = os.stat(file_path)
+        mtime = stat_info.st_mtime
+        mtime_str = time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(mtime))
+        
+        # Check If-Modified-Since header
+        if 'If-Modified-Since' in self.headers:
+            try:
+                client_mtime = self.headers['If-Modified-Since']
+                if client_mtime == mtime_str:
+                    self.send_response(304)  # Not Modified
+                    self.end_headers()
+                    return
+            except:
+                pass
+        
         # Determine content type
         content_type, _ = mimetypes.guess_type(file_path)
         if content_type is None:
             content_type = 'application/octet-stream'
         
-        # Send image
+        # Read and optionally compress image
+        with open(file_path, 'rb') as f:
+            image_data = f.read()
+        
+        # Send image with caching headers (10s cache)
         self.send_response(200)
         self.send_header('Content-type', content_type)
-        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Last-Modified', mtime_str)
+        self.send_header('Cache-Control', f'public, max-age={CACHE_MAX_AGE}, must-revalidate')
+        self.send_header('ETag', f'"{hashlib.md5(image_data).hexdigest()}"')
+        self.send_header('Content-Length', str(len(image_data)))
         self.end_headers()
-        
-        with open(file_path, 'rb') as f:
-            self.wfile.write(f.read())
+        self.wfile.write(image_data)
     
     def extract_metrics(self, script_output):
         """Extract price, GPU metrics, and frequency band data from script output"""
@@ -1098,6 +1266,10 @@ class WaveletHandler(BaseHTTPRequestHandler):
             'current_price': None,
             'price_change': None,
             'gpu_time': None,
+            'gpu_platform': None,
+            'data_load_time': None,
+            'wavelet_time': None,
+            'plot_time': None,
             'frequency_bands': []
         }
         
@@ -1126,6 +1298,65 @@ class WaveletHandler(BaseHTTPRequestHandler):
                     metrics['gpu_time'] = time_part
                 except:
                     pass
+            
+            # Extract detailed timing breakdown
+            if 'Data loading (Binance):' in line:
+                try:
+                    time_str = line.split(':')[1].strip().replace('s', '')
+                    metrics['data_load_time'] = f"{float(time_str):.2f}s"
+                except:
+                    pass
+            
+            if 'Wavelet computation:' in line:
+                try:
+                    time_str = line.split(':')[1].strip().replace('s', '')
+                    metrics['wavelet_time'] = f"{float(time_str):.2f}s"
+                except:
+                    pass
+            
+            if 'Plot generation:' in line:
+                try:
+                    time_str = line.split(':')[1].strip().replace('s', '')
+                    metrics['plot_time'] = f"{float(time_str):.2f}s"
+                except:
+                    pass
+            
+            # Extract GPU platform - check multiple variations
+            if any(keyword in line.lower() for keyword in ['platform', 'opencl', 'cuda', 'mali', 'intel']):
+                # Try to extract platform info from various line formats
+                if 'Selected platform:' in line or 'Using platform:' in line:
+                    try:
+                        if 'Selected platform:' in line:
+                            platform_part = line.split('Selected platform:')[1].strip()
+                        else:
+                            platform_part = line.split('Using platform:')[1].strip()
+                        # Clean up platform name
+                        metrics['gpu_platform'] = platform_part.split('(')[0].strip()
+                    except:
+                        pass
+                elif '[' in line and ']' in line and any(x in line for x in ['NVIDIA', 'AMD', 'Intel', 'Mali', 'Mesa']):
+                    # Format: "[1] NVIDIA CUDA" or similar
+                    try:
+                        platform_part = line.split(']')[1].strip()
+                        metrics['gpu_platform'] = platform_part
+                    except:
+                        pass
+            
+            # Also check for device name
+            if 'Selected device:' in line or 'Device name:' in line or 'Device:' in line:
+                try:
+                    if 'Selected device:' in line:
+                        device_part = line.split('Selected device:')[1].strip()
+                    elif 'Device name:' in line:
+                        device_part = line.split('Device name:')[1].strip()
+                    else:
+                        device_part = line.split('Device:')[1].strip()
+                    if metrics['gpu_platform']:
+                        metrics['gpu_platform'] += f' ({device_part})'
+                    else:
+                        metrics['gpu_platform'] = device_part
+                except:
+                    pass
         
         # Generate default frequency bands for 5-minute timeframe
         # These are the theoretical periods based on downsampling
@@ -1152,6 +1383,12 @@ class WaveletHandler(BaseHTTPRequestHandler):
             }
             metrics['frequency_bands'].append(band_data)
         
+        # Log extracted GPU platform for debugging
+        if metrics['gpu_platform']:
+            print(f"[DEBUG] Extracted GPU platform: {metrics['gpu_platform']}")
+        else:
+            print(f"[DEBUG] No GPU platform info found in script output")
+        
         return metrics
     
     def send_json_response(self, data, status=200):
@@ -1168,9 +1405,10 @@ class WaveletHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    """Start the web server"""
+    """Start the web server with threading support"""
     server_address = ('', PORT)
-    httpd = HTTPServer(server_address, WaveletHandler)
+    # Use ThreadingHTTPServer for concurrent request handling (faster on Orange Pi)
+    httpd = ThreadingHTTPServer(server_address, WaveletHandler)
     
     print("=" * 70)
     print("GPU WAVELET ANALYSIS WEB SERVER")
