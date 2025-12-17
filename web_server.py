@@ -24,6 +24,9 @@ import mimetypes
 import gzip
 import hashlib
 from datetime import datetime
+import threading
+import uuid
+from queue import Queue
 
 # Configuration
 PORT = 8080
@@ -34,6 +37,10 @@ OUTPUT_DIR = 'wavelet_plots'
 CACHE_MAX_AGE = 10  # 10 seconds cache for images
 ENABLE_COMPRESSION = True  # Gzip compression for large responses
 
+# Background job tracking
+jobs = {}  # {job_id: {'status': 'running'|'completed'|'failed', 'result': {...}, 'error': str}}
+job_lock = threading.Lock()
+
 class WaveletHandler(BaseHTTPRequestHandler):
     
     def do_GET(self):
@@ -41,7 +48,11 @@ class WaveletHandler(BaseHTTPRequestHandler):
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         
-        if path == '/' or path == '/index.html':
+        if path.startswith('/api/job/'):
+            # Job status endpoint
+            job_id = path.split('/')[-1]
+            self.serve_job_status(job_id)
+        elif path == '/' or path == '/index.html':
             self.serve_index()
         elif path == '/api/currencies':
             self.serve_currencies()
@@ -713,7 +724,7 @@ class WaveletHandler(BaseHTTPRequestHandler):
             });
         });
         
-        // Run analysis
+        // Run analysis with async job polling
         async function runAnalysis() {
             console.log('runAnalysis called');
             const statusEl = document.getElementById('status');
@@ -725,10 +736,11 @@ class WaveletHandler(BaseHTTPRequestHandler):
             // Disable button and show loading
             analyzeBtn.disabled = true;
             statusEl.className = 'status loading';
-            statusEl.innerHTML = '<span class="spinner"></span>Running GPU wavelet analysis for ' + selectedCurrency + '/USDT (' + selectedTimeframe + ')...';
-            plotsContainer.innerHTML = '<div class="empty-state"><h2>⚙️ Processing...</h2><p>GPU decomposition in progress</p></div>';
+            statusEl.innerHTML = '<span class="spinner"></span>Starting analysis for ' + selectedCurrency + '/USDT (' + selectedTimeframe + ')...';
+            plotsContainer.innerHTML = '<div class="empty-state"><h2>⚙️ Processing...</h2><p>Analysis started in background...</p></div>';
             
             try {
+                // Start analysis job
                 const response = await fetch('/api/analyze', {
                     method: 'POST',
                     headers: {
@@ -740,29 +752,52 @@ class WaveletHandler(BaseHTTPRequestHandler):
                     })
                 });
                 
-                const result = await response.json();
+                const jobInfo = await response.json();
                 
-                if (result.success) {
-                    statusEl.className = 'status success';
-                    let timingInfo = '';
-                    if (result.timing) {
-                        timingInfo = ` (script: ${result.script_time}s, total: ${result.execution_time}s)`;
-                    }
-                    statusEl.innerHTML = '✓ Analysis complete! Generated ' + result.plots.length + ' plots' + timingInfo;
-                    console.log('Timing breakdown:', result.timing);
-                    console.log('Received metrics:', result.metrics);
-                    console.log('Frequency bands:', result.metrics.frequency_bands);
-                    displayMetrics(result.metrics, selectedCurrency);
-                    displayPlots(result.plots, selectedCurrency);
-                    displayFrequencyBands(result.metrics.frequency_bands || [], selectedTimeframe);
-                } else {
-                    throw new Error(result.error || 'Analysis failed');
+                if (!jobInfo.success) {
+                    throw new Error(jobInfo.error || 'Failed to start analysis');
                 }
+                
+                const jobId = jobInfo.job_id;
+                console.log('Job started:', jobId);
+                
+                statusEl.innerHTML = '<span class="spinner"></span>Analysis running (Job: ' + jobId.substring(0, 8) + '...)';
+                
+                // Poll for job completion
+                const pollInterval = 1000; // Poll every 1 second
+                const poll = async () => {
+                    const statusResponse = await fetch('/api/job/' + jobId);
+                    const status = await statusResponse.json();
+                    
+                    if (status.status === 'running') {
+                        statusEl.innerHTML = '<span class="spinner"></span>Processing ' + selectedCurrency + '/' + selectedTimeframe + '...';
+                        setTimeout(poll, pollInterval);
+                    } else if (status.status === 'completed') {
+                        const result = status.result;
+                        statusEl.className = 'status success';
+                        let timingInfo = '';
+                        if (result.timing) {
+                            timingInfo = ` (script: ${result.script_time}s, total: ${result.execution_time}s)`;
+                        }
+                        statusEl.innerHTML = '✓ Analysis complete! Generated ' + result.plots.length + ' plots' + timingInfo;
+                        console.log('Timing breakdown:', result.timing);
+                        console.log('Received metrics:', result.metrics);
+                        displayMetrics(result.metrics, selectedCurrency);
+                        displayPlots(result.plots, selectedCurrency);
+                        displayFrequencyBands(result.metrics.frequency_bands || [], selectedTimeframe);
+                        analyzeBtn.disabled = false;
+                    } else {
+                        throw new Error(status.error || 'Analysis failed');
+                    }
+                };
+                
+                // Start polling
+                setTimeout(poll, pollInterval);
+                
             } catch (error) {
                 statusEl.className = 'status error';
                 statusEl.innerHTML = '✗ Error: ' + error.message;
                 plotsContainer.innerHTML = '<div class="empty-state"><h2>❌ Error</h2><p>' + error.message + '</p></div>';
-            } finally {
                 analyzeBtn.disabled = false;
             }
         }
@@ -1025,12 +1060,39 @@ class WaveletHandler(BaseHTTPRequestHandler):
             self.wfile.write(html_bytes)
     
     def serve_currencies(self):
-        """Serve list of available currencies"""
+        """Serve available currencies"""
         currencies = ['BTC', 'ETH', 'SOL']
         self.send_json_response({'currencies': currencies})
     
+    def serve_job_status(self, job_id):
+        """Serve job status"""
+        with job_lock:
+            if job_id not in jobs:
+                self.send_json_response({
+                    'success': False,
+                    'error': 'Job not found'
+                }, status=404)
+                return
+            
+            job = jobs[job_id]
+            if job['status'] == 'running':
+                self.send_json_response({
+                    'status': 'running',
+                    'message': 'Analysis in progress...'
+                })
+            elif job['status'] == 'completed':
+                self.send_json_response({
+                    'status': 'completed',
+                    'result': job['result']
+                })
+            else:  # failed
+                self.send_json_response({
+                    'status': 'failed',
+                    'error': job.get('error', 'Unknown error')
+                })
+    
     def handle_analyze(self):
-        """Handle analysis request"""
+        """Handle analysis request - start async job"""
         try:
             # Read request body
             content_length = int(self.headers['Content-Length'])
@@ -1057,6 +1119,51 @@ class WaveletHandler(BaseHTTPRequestHandler):
                 }, status=400)
                 return
             
+            # Create job ID
+            job_id = str(uuid.uuid4())
+            
+            # Initialize job
+            with job_lock:
+                jobs[job_id] = {
+                    'status': 'running',
+                    'currency': currency,
+                    'timeframe': timeframe,
+                    'start_time': time.time()
+                }
+            
+            print(f"[JOB] Created job {job_id[:8]} for {currency}/{timeframe}")
+            
+            # Start background thread for analysis
+            thread = threading.Thread(
+                target=self.run_analysis_background,
+                args=(job_id, currency, timeframe),
+                daemon=True
+            )
+            thread.start()
+            
+            # Return job ID immediately
+            self.send_json_response({
+                'success': True,
+                'job_id': job_id,
+                'message': 'Analysis started'
+            })
+            
+        except json.JSONDecodeError:
+            self.send_json_response({
+                'success': False,
+                'error': 'Invalid JSON'
+            }, status=400)
+        except Exception as e:
+            self.send_json_response({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+    
+    def run_analysis_background(self, job_id, currency, timeframe):
+        """Run analysis in background thread"""
+        print(f"[BACKGROUND] Starting analysis for {currency}/{timeframe} (job: {job_id[:8]})")
+        
+        try:
             # Timing breakdown
             timing = {
                 'cache_check': 0.0,
@@ -1097,7 +1204,7 @@ class WaveletHandler(BaseHTTPRequestHandler):
             # Run analysis script only if cache is invalid
             if not cache_valid:
                 script_start = time.time()
-                print(f"[TIMING] Starting script execution for {currency}/{timeframe}")
+                print(f"[BACKGROUND] Starting script execution for {currency}/{timeframe}")
                 # Pass currency and timeframe as arguments
                 result = subprocess.run(
                     [PYTHON_BIN, PLOT_SCRIPT, currency, timeframe],
@@ -1107,7 +1214,7 @@ class WaveletHandler(BaseHTTPRequestHandler):
                     cwd=os.getcwd()
                 )
                 timing['script_execution'] = time.time() - script_start
-                print(f"[TIMING] Script completed in {timing['script_execution']:.2f}s")
+                print(f"[BACKGROUND] Script completed in {timing['script_execution']:.2f}s")
                 
                 # Save cache metadata with timeframe
                 if result.returncode == 0:
@@ -1121,7 +1228,7 @@ class WaveletHandler(BaseHTTPRequestHandler):
                     with open(metadata_file, 'w') as f:
                         json.dump(cache_meta, f)
             else:
-                print(f"[TIMING] Using cached data (age: {file_age:.0f}s, timeframe: {timeframe})")
+                print(f"[BACKGROUND] Using cached data (age: {file_age:.0f}s, timeframe: {timeframe})")
                 # Use cached data
                 result = subprocess.CompletedProcess(
                     args=[], returncode=0, stdout='Using cached data', stderr=''
@@ -1129,21 +1236,18 @@ class WaveletHandler(BaseHTTPRequestHandler):
                 timing['script_execution'] = 0.0
             
             if result.returncode != 0:
-                self.send_json_response({
-                    'success': False,
-                    'error': f'Script execution failed: {result.stderr}'
-                }, status=500)
+                with job_lock:
+                    jobs[job_id]['status'] = 'failed'
+                    jobs[job_id]['error'] = f'Script execution failed: {result.stderr}'
                 return
             
             # Get list of generated plots
             plot_start = time.time()
             plot_dir = os.path.join(OUTPUT_DIR, currency.lower())
             if not os.path.exists(plot_dir):
-                self.send_json_response({
-                    'success': False,
-                    'error': 'Plot directory not found',
-                    'timing': timing
-                }, status=500)
+                with job_lock:
+                    jobs[job_id]['status'] = 'failed'
+                    jobs[job_id]['error'] = 'Plot directory not found'
                 return
             
             plots = []
@@ -1180,38 +1284,37 @@ class WaveletHandler(BaseHTTPRequestHandler):
             timing['total'] = time.time() - request_start
             
             # Log timing breakdown
-            print(f"[TIMING] Breakdown for {currency}/{timeframe}:")
+            print(f"[BACKGROUND] Breakdown for {currency}/{timeframe}:")
             print(f"  Cache check:       {timing['cache_check']:.3f}s")
             print(f"  Script execution:  {timing['script_execution']:.3f}s")
             print(f"  Plot discovery:    {timing['plot_discovery']:.3f}s")
             print(f"  Metrics extract:   {timing['metrics_extraction']:.3f}s")
             print(f"  TOTAL:             {timing['total']:.3f}s")
             
-            self.send_json_response({
-                'success': True,
-                'currency': currency,
-                'plots': plots,
-                'execution_time': f'{timing["total"]:.2f}',
-                'script_time': f'{timing["script_execution"]:.2f}',
-                'metrics': metrics,
-                'timing': timing
-            })
+            # Update job with results
+            with job_lock:
+                jobs[job_id]['status'] = 'completed'
+                jobs[job_id]['result'] = {
+                    'success': True,
+                    'currency': currency,
+                    'plots': plots,
+                    'execution_time': f'{timing["total"]:.2f}',
+                    'script_time': f'{timing["script_execution"]:.2f}',
+                    'metrics': metrics,
+                    'timing': timing
+                }
             
-        except json.JSONDecodeError:
-            self.send_json_response({
-                'success': False,
-                'error': 'Invalid JSON'
-            }, status=400)
+            print(f"[BACKGROUND] Job {job_id[:8]} completed successfully")
+            
         except subprocess.TimeoutExpired:
-            self.send_json_response({
-                'success': False,
-                'error': 'Analysis timeout (>60s)'
-            }, status=500)
+            with job_lock:
+                jobs[job_id]['status'] = 'failed'
+                jobs[job_id]['error'] = 'Analysis timeout (>180s)'
         except Exception as e:
-            self.send_json_response({
-                'success': False,
-                'error': str(e)
-            }, status=500)
+            with job_lock:
+                jobs[job_id]['status'] = 'failed'
+                jobs[job_id]['error'] = str(e)
+            print(f"[BACKGROUND] Job {job_id[:8]} failed: {e}")
     
     def serve_image(self, path):
         """Serve plot images with caching and conditional requests"""
