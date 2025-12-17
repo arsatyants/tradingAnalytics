@@ -231,22 +231,7 @@ class ParallelWaveletHandler(BaseHTTPRequestHandler):
             output_dir = f'{OUTPUT_DIR}/{currency.lower()}'
             os.makedirs(output_dir, exist_ok=True)
             
-            # Step 1: Prepare data (sequential - GPU computation)
-            with job_lock:
-                jobs[job_id]['progress'] = 'Preparing data & running GPU decomposition...'
-            
-            prep_result = subprocess.run(
-                [PYTHON_BIN, 'prepare_data.py', currency, timeframe],
-                capture_output=True, text=True, timeout=120  # 2 minutes for data prep
-            )
-            
-            if prep_result.returncode != 0:
-                with job_lock:
-                    jobs[job_id]['status'] = 'failed'
-                    jobs[job_id]['error'] = f'Data preparation failed: {prep_result.stderr}'
-                return
-            
-            # Step 2: Generate all plots using original script (includes all 6 plots)
+            # Generate all plots using original script (includes data loading, GPU decomposition, and all 6 plots)
             with job_lock:
                 jobs[job_id]['progress'] = 'Generating all plots...'
             
