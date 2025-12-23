@@ -183,8 +183,21 @@ haar_high_pass = np.array([0.5, -0.5], dtype=np.float32)
 print("\n✓ Wavelets loaded (Haar)")
 
 # =============================================================================
-# CONVOLUTION FUNCTION
+# HELPER FUNCTIONS
 # =============================================================================
+
+def timeframe_to_minutes(tf_string):
+    """Convert timeframe string like '5m', '1h', '1d' to minutes"""
+    if tf_string.endswith('m'):
+        return int(tf_string[:-1])
+    elif tf_string.endswith('h'):
+        return int(tf_string[:-1]) * 60
+    elif tf_string.endswith('d'):
+        return int(tf_string[:-1]) * 1440
+    elif tf_string.endswith('w'):
+        return int(tf_string[:-1]) * 10080
+    else:
+        return 60  # Default to 1 hour
 
 def symmetric_pad(signal, pad_len):
     """Apply symmetric padding"""
@@ -226,8 +239,19 @@ data_load_start = time.time()
 exchange = ccxt.binance({'enableRateLimit': True})
 symbol = f'{CURRENCY}/USDT'
 
-since_date = datetime.now() - timedelta(days=7)
-since = exchange.parse8601(since_date.strftime('%Y-%m-%dT%H:%M:%S.000Z'))
+# Calculate appropriate lookback period based on timeframe
+timeframe_minutes = timeframe_to_minutes(TIMEFRAME)
+if timeframe_minutes <= 5:  # 1m, 5m - get 2-3 days
+    lookback = datetime.now() - timedelta(days=3)
+elif timeframe_minutes <= 30:  # 15m, 30m - get 1 week
+    lookback = datetime.now() - timedelta(weeks=1)
+elif timeframe_minutes < 1440:  # 1h, 4h - get 1 month
+    lookback = datetime.now() - timedelta(days=30)
+else:  # 1d and larger - get 2 years
+    lookback = datetime.now() - timedelta(days=730)
+
+since = int(lookback.timestamp() * 1000)  # Convert to milliseconds
+print(f"Fetching data from {lookback.strftime('%Y-%m-%d %H:%M')}...")
 
 all_data = []
 while True:
