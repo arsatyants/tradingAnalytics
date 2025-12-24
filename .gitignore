@@ -211,6 +211,7 @@ wavelet_plots/
 wavelet_plots_cuda/
 wavelet_plots_opengl/
 wavelet_plots_cpu/
+wavelet_plots_vulkan/
 
 # Model files
 scaler.pth
