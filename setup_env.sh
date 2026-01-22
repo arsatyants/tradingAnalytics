@@ -180,11 +180,11 @@ echo ""
 echo "Virtual environment: $VENV_DIR/"
 echo ""
 echo "Python Packages:"
-echo -e "  ${GREEN}✓${NC} Core dependencies (numpy, pandas, torch, etc.)"
+echo -e "  ${GREEN}✓${NC} Core dependencies numpy, pandas, torch, etc."
 if [ "$PYOPENCL_INSTALLED" = true ]; then
-    echo -e "  ${GREEN}✓${NC} pyopencl (GPU acceleration via OpenCL)"
+    echo -e "  ${GREEN}✓${NC} pyopencl - GPU acceleration via OpenCL"
 else
-    echo -e "  ${YELLOW}⚠${NC} pyopencl not installed (CPU fallback available)"
+    echo -e "  ${YELLOW}⚠${NC} pyopencl not installed - CPU fallback available"
 fi
 echo ""
 echo "GPU Status:"

@@ -305,17 +305,22 @@ limit = 1000             # API max, pagination handles more
 ```bash
 # Method 1: Automated (recommended)
 ./setup_env.sh  # Creates .venv, installs deps, detects GPU
+# - Installs system deps (python3-dev, cmake, opencl-dev) before Python packages
+# - Makes pyopencl optional (installs separately with error handling)
+# - Core packages install even if GPU support fails
 
 # Method 2: Manual
 python3 -m venv .venv
 source .venv/bin/activate
+sudo apt install -y python3-dev build-essential cmake ocl-icd-opencl-dev
 pip install -r requirements.txt
+# pyopencl may fail without system dependencies - install them first!
 
 # Method 3: Notebook-based
 # Uncomment %pip install lines in env.ipynb cells
 
 # GPU-specific:
-pip install pyopencl  # OpenCL (multi-platform)
+pip install pyopencl  # OpenCL (multi-platform) - requires python3-dev
 # CUDA included in torch from PyTorch index
 ```
 
