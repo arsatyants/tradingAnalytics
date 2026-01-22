@@ -3,7 +3,8 @@
 # ===========================================
 # Automatic setup: Creates .venv and installs all dependencies + GPU support
 
-set -e  # Exit on error
+# Don't exit on error for optional components
+set +e
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -70,44 +71,63 @@ echo -e "${GREEN}✓${NC} Activated"
 
 # Upgrade pip
 echo ""
-echo -e "${BLUE}[3/6]${NC} Upgrading pip..."
+echo -e "${BLUE}[3/7]${NC} Upgrading pip..."
 pip install --upgrade pip -q
 echo -e "${GREEN}✓${NC} pip upgraded"
 
-# Install all dependencies
+# Install system dependencies for Python packages
 echo ""
-echo -e "${BLUE}[4/6]${NC} Installing all dependencies from requirements.txt..."
-echo "This may take several minutes..."
-pip install -r requirements.txt
-echo ""
-echo -e "${GREEN}✓${NC} All dependencies installed
+echo -e "${BLUE}[4/7]${NC} Installing system dependencies..."
+echo "This requires sudo privileges..."
 
-# GPU Setup (OpenCL & Vulkan)
-echo ""
-echo -e "${BLUE}[5/6]${NC} Setting up GPU support (OpenCL & Vulkan)..."
-echo ""
-
-# Install OpenCL support
-echo "Installing OpenCL runtime..."
+# Python development headers (required for pyopencl)
 sudo apt update -qq
-sudo apt install -y ocl-icd-libopencl1 mesa-opencl-icd clinfo >/dev/null 2>&1
-echo -e "${GREEN}✓${NC} OpenCL installed"
+sudo apt install -y python3-dev python3-pip build-essential cmake ocl-icd-opencl-dev clinfo >/dev/null 2>&1 || echo -e "${YELLOW}⚠${NC} Some system packages may not be available"
+echo -e "${GREEN}✓${NC} System dependencies installed"
 
-# Install Vulkan support
-echo "Installing Vulkan runtime..."
-sudo apt install -y vulkan-tools mesa-vulkan-drivers libvulkan1 >/dev/null 2>&1
-echo -e "${GREEN}✓${NC} Vulkan installed"
+# Install core dependencies (without pyopencl)
+echo ""
+echo -e "${BLUE}[5/7]${NC} Installing core Python dependencies..."
+echo "This may take several minutes..."
 
-# Install Mesa utilities
-echo "Installing Mesa GPU utilities..."
-sudo apt install -y mesa-utils libgl1-mesa-dri >/dev/null 2>&1
+# Create temporary requirements without pyopencl
+grep -v "^pyopencl" requirements.txt > /tmp/requirements_core.txt
+
+pip install -r /tmp/requirements_core.txt
+echo ""
+echo -e "${GREEN}✓${NC} Core dependencies installed"
+
+# Try to install pyopencl (optional)
+echo ""
+echo -e "${BLUE}[6/7]${NC} Installing GPU support (pyopencl - optional)..."
+if pip install pyopencl==2025.2.7 2>&1 | tee /tmp/pyopencl_install.log; then
+    echo -e "${GREEN}✓${NC} pyopencl installed successfully"
+else
+    echo -e "${YELLOW}⚠${NC} pyopencl installation failed (GPU acceleration disabled)"
+    echo "    CPU fallback will be used. Check /tmp/pyopencl_install.log for details."
+    echo "    The project will still work with gpu_wavelet_cpu_plot.py"
+fi
+
+# GPU Runtime Setup (Vulkan & Mesa)
+echo ""
+echo -e "${BLUE}[7/7]${NC} Setting up GPU runtime (Vulkan & Mesa)..."
+echo ""
+
+# Install Vulkan support (optional)
+echo "Installing Vulkan runtime (optional)..."
+sudo apt install -y vulkan-tools mesa-vulkan-drivers libvulkan1 >/dev/null 2>&1 || echo -e "${YELLOW}⚠${NC} Vulkan packages not available"
+echo -e "${GREEN}✓${NC} Vulkan setup complete"
+
+# Install Mesa utilities (optional)
+echo "Installing Mesa GPU utilities (optional)..."
+sudo apt install -y mesa-utils libgl1-mesa-dri mesa-opencl-icd >/dev/null 2>&1 || echo -e "${YELLOW}⚠${NC} Mesa packages not available"
 echo -e "${GREEN}✓${NC} Mesa utilities installed"
 
-# Load panfrost GPU driver
-echo "Loading panfrost GPU driver..."
-sudo modprobe panfrost 2>/dev/null || echo -e "${YELLOW}⚠${NC} Panfrost module not loaded (enable GPU in orangepi-config)"
-echo "panfrost" | sudo tee /etc/modules-load.d/panfrost.conf >/dev/null
-echo -e "${GREEN}✓${NC} Panfrost configured to load on boot"
+# Load panfrost GPU driver (Orange Pi specific)
+echo "Loading panfrost GPU driver (Orange Pi specific)..."
+sudo modprobe panfrost 2>/dev/null || echo -e "${YELLOW}⚠${NC} Panfrost module not loaded (enable GPU in orangepi-config if on Orange Pi)"
+echo "panfrost" | sudo tee /etc/modules-load.d/panfrost.conf >/dev/null 2>&1 || true
+echo -e "${GREEN}✓${NC} Panfrost configured"
 
 # Set GPU permissions
 echo "Configuring GPU permissions..."
@@ -117,7 +137,7 @@ echo -e "${GREEN}✓${NC} User added to render and video groups"
 
 # Configure environment
 echo ""
-echo -e "${BLUE}[6/6]${NC} Configuring GPU environment..."
+echo "Configuring GPU environment variables..."
 
 # Add to venv activation
 echo 'export RUSTICL_ENABLE=panfrost' >> "$VENV_DIR/bin/activate"
@@ -147,6 +167,10 @@ else
     echo -e "${YELLOW}⚠${NC} GPU device not found - enable in orangepi-config and reboot"
 fi"
 
+# Check what was installed
+PYOPENCL_INSTALLED=false
+$VENV_DIR/bin/python -c "import pyopencl" 2>/dev/null && PYOPENCL_INSTALLED=true
+
 # Summary
 echo ""
 echo "======================================================================"
@@ -155,13 +179,30 @@ echo "======================================================================"
 echo ""
 echo "Virtual environment: $VENV_DIR/"
 echo ""
+echo "Python Packages:"
+echo -e "  ${GREEN}✓${NC} Core dependencies (numpy, pandas, torch, etc.)"
+if [ "$PYOPENCL_INSTALLED" = true ]; then
+    echo -e "  ${GREEN}✓${NC} pyopencl (GPU acceleration via OpenCL)"
+else
+    echo -e "  ${YELLOW}⚠${NC} pyopencl not installed (CPU fallback available)"
+fi
+echo ""
 echo "GPU Status:"
 if [ -e /dev/dri/card0 ]; then
-    echo -e "  ${GREEN}✓${NC} GPU device detected"
-    echo "  To use GPU acceleration: RUSTICL_ENABLE=panfrost python script.py"
-    echo "  (automatically set when activating venv)"
+    echo -e "  ${GREEN}✓${NC} GPU device detected: /dev/dri/card0"
+    if [ "$PYOPENCL_INSTALLED" = true ]; then
+        echo -e "  ${GREEN}✓${NC} OpenCL GPU acceleration available"
+        echo "  To use GPU: RUSTICL_ENABLE=panfrost python script.py"
+        echo "  (automatically set when activating venv)"
+    else
+        echo -e "  ${YELLOW}⚠${NC} GPU detected but pyopencl not installed"
+        echo "  Run: source .venv/bin/activate && pip install pyopencl"
+    fi
 else
-    echo -e "  ${YELLOW}⚠${NC} GPU not detected - run 'sudo orangepi-config' to enable"
+    echo -e "  ${YELLOW}⚠${NC} GPU device not detected"
+    if [[ "$MODEL" == *"OrangePi"* ]]; then
+        echo "  Enable GPU in orangepi-config and reboot"
+    fi
 fi
 echo ""
 echo "To activate the environment manually:"

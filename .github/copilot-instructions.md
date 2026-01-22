@@ -1,13 +1,31 @@
 # Trading Analytics - AI Agent Instructions
 
+## Quick Reference
+
+**Start Here:**
+- Run analysis: `python web_server_parallel.py` → http://localhost:8080
+- Single script: `python gpu_wavelet_gpu_plot.py BTC 5m`
+- Setup: `./setup_env.sh` (creates .venv, installs deps, detects GPU)
+
+**Key Constraints:**
+- LSTM scaling: Always use `MinMaxScaler(feature_range=(-1, 1))` - never [0,1]
+- Data loading: Adaptive date ranges by timeframe (see pattern below)
+- OpenCL: Auto-detect best platform with scoring (NVIDIA>AMD>ARM)
+- Pi Zero: Use `--demo --no-plots` flag (ccxt causes bus errors)
+
+**File Organization:**
+- Notebooks: Monolithic, state-dependent (must run sequentially)
+- GPU scripts: Accept `<CURRENCY> <TIMEFRAME>` CLI args
+- Parallel system: `prepare_data.py` → 6 plot processes (3.5x speedup)
+
 ## Project Overview
-Cryptocurrency trading toolkit targeting **Orange Pi and embedded systems**. Performs BTC/ETH/SOL price prediction and anomaly detection using LSTM networks and GPU-accelerated wavelet transforms. Real-time data from Binance via CCXT.
+Cryptocurrency trading toolkit for **Orange Pi and embedded systems**. Performs BTC/ETH/SOL price prediction and anomaly detection using LSTM networks and GPU-accelerated wavelet transforms. Real-time data from Binance via CCXT.
 
 **Key Design Goals:**
-- Multi-platform GPU support (OpenCL → CUDA → Vulkan → OpenGL → CPU)
-- Graceful degradation (demo mode, lazy imports)
-- Parallel processing optimization for multi-core ARM devices
-- Publication-quality plot generation (300 DPI PNG)
+- Multi-platform GPU support (OpenCL → CUDA → Vulkan → OpenGL → CPU fallback)
+- Graceful degradation (demo mode, lazy imports, error handling)
+- Parallel processing (3.5x speedup via OS-level subprocess spawning)
+- Publication-quality plot generation (300 DPI PNG, 6 plots per analysis)
 
 ## Architecture
 
@@ -17,14 +35,14 @@ Jupyter Notebooks (btc-prediction.ipynb, wave_nada.ipynb)
     ↓ LSTM training, interactive analysis
     
 GPU Wavelet Scripts (5 variants: opencl/cuda/vulkan/opengl/cpu)
-    ↓ Batch processing with command-line args
+    ↓ Batch processing with CLI args: python <script>.py <CURRENCY> <TIMEFRAME>
     
 Web Servers (3 variants: standard/parallel/vulkan)
-    ↓ HTTP interface with async job tracking
+    ↓ HTTP interface (port 8080) with async job tracking
     
-Parallel Plot System (NEW)
+Parallel Plot System (PRODUCTION)
     prepare_data.py → [plot_01.py, plot_template.py × 5] (subprocess.Popen)
-    ↓ 3.5x speedup via OS-level parallelism
+    ↓ 3.5x speedup via OS-level parallelism (13s vs 45s)
 ```
 
 ### Core Files
@@ -45,9 +63,9 @@ Parallel Plot System (NEW)
 - `web_server_parallel.py`: **PREFERRED** - parallel plot generation (3.5x faster)
 - `web_server_vulkan.py`: Vulkan backend variant
 
-**Parallel System** (NEW):
+**Parallel System** (PRODUCTION):
 - `prepare_data.py`: Data load + GPU wavelet → `wavelet_data.pkl` cache
-- `plot_common.py`: Shared utilities (`gpu_convolve`, `load_wavelet_data`)
+- `plot_common.py`: Shared utilities (`gpu_convolve`, `load_wavelet_data`, `save_wavelet_data`)
 - `plot_01.py`: Main 4-panel overview (full implementation)
 - `plot_template.py`: Simplified plots 02a-05 (accepts plot ID arg)
 
@@ -60,7 +78,7 @@ python gpu_wavelet_gpu_plot.py BTC 5m    # Generates 6 PNG plots
 ./run_all_currencies.sh                  # 18 plots (BTC/ETH/SOL × 6)
 ./run_all_currencies_console.sh          # Console output with ASCII
 
-# Web interface
+# Web interface (RECOMMENDED)
 python web_server_parallel.py            # http://localhost:8080 (parallel)
 python web_server.py                     # http://localhost:8080 (sequential)
 
@@ -75,7 +93,7 @@ python gpu_wavelet_cpu_plot.py --demo --no-plots
 
 ## Critical Code Patterns
 
-### 1. Data Loading (MANDATORY for all scripts)
+### 1. Data Loading (Adaptive Date Ranges)
 **Pattern:** Adaptive date range based on timeframe to get ~700-1000 candles consistently.
 
 ```python
