@@ -235,9 +235,13 @@ class ParallelWaveletHandler(BaseHTTPRequestHandler):
             with job_lock:
                 jobs[job_id]['progress'] = 'Generating all plots...'
             
+            # Set environment for GPU support
+            env = os.environ.copy()
+            env['RUSTICL_ENABLE'] = 'panfrost'
+            
             plot_result = subprocess.run(
                 [PYTHON_BIN, 'gpu_wavelet_gpu_plot.py', currency, timeframe],
-                capture_output=True, text=True, timeout=360  # 6 minutes
+                capture_output=True, text=True, timeout=360, env=env  # 6 minutes
             )
             
             if plot_result.returncode != 0:

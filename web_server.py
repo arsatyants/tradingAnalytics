@@ -1205,13 +1205,19 @@ class WaveletHandler(BaseHTTPRequestHandler):
             if not cache_valid:
                 script_start = time.time()
                 print(f"[BACKGROUND] Starting script execution for {currency}/{timeframe}")
+                
+                # Set environment for GPU support
+                env = os.environ.copy()
+                env['RUSTICL_ENABLE'] = 'panfrost'
+                
                 # Pass currency and timeframe as arguments
                 result = subprocess.run(
                     [PYTHON_BIN, PLOT_SCRIPT, currency, timeframe],
                     capture_output=True,
                     text=True,
                     timeout=180,  # Increased timeout for slower Orange Pi
-                    cwd=os.getcwd()
+                    cwd=os.getcwd(),
+                    env=env
                 )
                 timing['script_execution'] = time.time() - script_start
                 print(f"[BACKGROUND] Script completed in {timing['script_execution']:.2f}s")

@@ -118,8 +118,24 @@ echo -e "${GREEN}✓${NC} User added to render and video groups"
 # Configure environment
 echo ""
 echo -e "${BLUE}[6/6]${NC} Configuring GPU environment..."
+
+# Add to venv activation
 echo 'export RUSTICL_ENABLE=panfrost' >> "$VENV_DIR/bin/activate"
 echo -e "${GREEN}✓${NC} RUSTICL_ENABLE=panfrost added to venv activation"
+
+# Add to user's .bashrc for system-wide availability
+if ! grep -q "RUSTICL_ENABLE=panfrost" ~/.bashrc; then
+    echo "" >> ~/.bashrc
+    echo "# GPU acceleration for Trading Analytics" >> ~/.bashrc
+    echo "export RUSTICL_ENABLE=panfrost" >> ~/.bashrc
+    echo -e "${GREEN}✓${NC} Added RUSTICL_ENABLE to ~/.bashrc"
+else
+    echo -e "${GREEN}✓${NC} RUSTICL_ENABLE already in ~/.bashrc"
+fi
+
+# Make helper scripts executable
+chmod +x run_gpu.sh run_web.sh 2>/dev/null || true
+echo -e "${GREEN}✓${NC} Helper scripts made executable"
 
 # Test GPU
 echo ""
@@ -151,10 +167,16 @@ echo ""
 echo "To activate the environment manually:"
 echo -e "  ${BLUE}source $VENV_DIR/bin/activate${NC}"
 echo ""
-echo "Quick start:"
-echo "  ./run_all_currencies.sh                    - Generate plots for BTC/ETH/SOL"
-echo "  python web_server_parallel.py              - Launch web interface at :8080"
-echo "  python gpu_wavelet_gpu_plot.py BTC 5m      - GPU-accelerated analysis"
+echo "Quick start (GPU-accelerated):"
+echo "  ./run_gpu.sh BTC 5m                        - Run GPU analysis directly"
+echo "  ./run_web.sh                               - Standard web server"
+echo "  ./run_web.sh parallel                      - Parallel web server (3.5x faster)"
+echo "  ./run_web.sh vulkan                        - Vulkan web server"
+echo ""
+echo "Direct script usage:"
+echo "  python gpu_wavelet_gpu_plot.py BTC 5m      - OpenCL GPU analysis"
+echo "  python gpu_wavelet_gpu_console.py ETH 1h   - Console version with ASCII"
+echo "  ./run_all_currencies.sh                    - Generate all 18 plots"
 echo "  jupyter lab                                - Open notebooks"
 echo ""
 if [ ! -e /dev/dri/card0 ]; then
@@ -162,7 +184,10 @@ if [ ! -e /dev/dri/card0 ]; then
     echo "  1. sudo orangepi-config"
     echo "  2. System → Hardware → Enable gpu_mali"
     echo "  3. Reboot"
-    echo "  4. Re-run this script"
+    echo "  4. Re-run this script or run: source ~/.bashrc"
+    echo ""
+    echo "Without GPU, scripts will show an error. Use --demo mode for CPU-only:"
+    echo "  python gpu_wavelet_cpu_plot.py BTC 5m --demo"
     echo ""
 fi
 echo "======================================================================"

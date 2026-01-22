@@ -1205,13 +1205,16 @@ class WaveletHandler(BaseHTTPRequestHandler):
             if not cache_valid:
                 script_start = time.time()
                 print(f"[BACKGROUND] Starting Vulkan script execution for {currency}/{timeframe}")
-                # Pass currency and timeframe as arguments
+                # Pass currency and timeframe as arguments with GPU environment
+                env = os.environ.copy()
+                env['RUSTICL_ENABLE'] = 'panfrost'
                 result = subprocess.run(
                     [PYTHON_BIN, PLOT_SCRIPT, currency, timeframe],
                     capture_output=True,
                     text=True,
                     timeout=180,  # Increased timeout for slower systems
-                    cwd=os.getcwd()
+                    cwd=os.getcwd(),
+                    env=env
                 )
                 timing['script_execution'] = time.time() - script_start
                 print(f"[BACKGROUND] Vulkan script completed in {timing['script_execution']:.2f}s")
